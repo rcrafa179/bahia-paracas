@@ -100,7 +100,7 @@ python scripts/09_presentacion.py           # escribe las cifras y compila prese
 # --- AEM3D ---
 python scripts/10_exportar_aem3d.py         # archivos de forzamiento de AEM3D (necesita 04 y 07)
 python scripts/11_malla_aem3d.py --correr   # malla y caso; corre pre_aem3d y la prueba de 6 h (en prueba/)
-cd data/processed/aem3d/caso_paracas/run && aem3d_openmp   # corrida de 14 días (~40 min con 5 hilos)
+python scripts/11_malla_aem3d.py --corrida  # corrida de 14 días en run/ (~40 min con 5 hilos) y su revisión
 ```
 
 `02` y `04` deben correr antes que `07`, porque `07` usa el mes candidato (`data/processed/mes_candidato.yaml`).
@@ -233,9 +233,13 @@ se midió:
 
 Usar más de 5 hilos no acelera, porque los núcleos lentos frenan a los demás. El resultado con 5 hilos
 coincide con el de 1 hilo: el nivel difiere como mucho 0,03 mm. La corrida de 14 días avanza ~17 pasos
-por segundo con 5 hilos, así que tarda ~40 min. Para correrla:
-`cd data/processed/aem3d/caso_paracas/run && caffeinate -i aem3d_openmp > salida.txt 2>&1`
-(`caffeinate` evita que el Mac se duerma).
+por segundo con 5 hilos, así que tarda ~40 min.
+
+Para correrla:
+- **Con el script:** `python scripts/11_malla_aem3d.py --corrida`. Usa `caffeinate` para que el Mac no
+  se duerma, informa el avance cada minuto y al final revisa velocidades y la marea en el mareógrafo.
+  Guarda el resultado en `malla_aem3d_resumen.yaml` (claves `corrida_*`) sin borrar el de la prueba.
+- **A mano:** `cd data/processed/aem3d/caso_paracas/run && caffeinate -i aem3d_openmp > salida.txt 2>&1`.
 
 Falta para la corrida completa del mes: activar temperatura, salinidad, densidad y calor (`iheat_input`,
 `itemperature`, `isalinity`, `idensity` = 1, `iclosure` = 6). Para eso se necesitan perfiles iniciales

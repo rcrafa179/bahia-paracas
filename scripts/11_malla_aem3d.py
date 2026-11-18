@@ -28,6 +28,7 @@ estiradas hasta el fondo real.
 Uso:
     python scripts/11_malla_aem3d.py              # arma el caso
     python scripts/11_malla_aem3d.py --correr     # además corre pre_aem3d y la prueba corta (en prueba/)
+    python scripts/11_malla_aem3d.py --corrida    # además corre la corrida completa de run/ (~40 min)
 """
 from __future__ import annotations
 
@@ -372,7 +373,9 @@ def fig_malla(b, lats, lons, dz, conjuntos, figdir):
 
 def main():
     p = parser_base("Malla y caso de prueba de AEM3D para la bahía de Paracas")
-    p.add_argument("--correr", action="store_true", help="correr pre_aem3d y la prueba corta de AEM3D")
+    p.add_argument("--correr", action="store_true", help="correr pre_aem3d y la prueba corta de AEM3D (prueba/)")
+    p.add_argument("--corrida", action="store_true",
+                   help="correr pre_aem3d y la corrida completa de malla_aem3d.corrida (run/, ~40 min con 5 hilos)")
     args = p.parse_args()
     cfg = cargar_config(args.config)
     ma, ae = cfg["malla_aem3d"], cfg["aem3d"]
@@ -442,45 +445,82 @@ def main():
              f"prueba/ = {pr['horas']} h")
     fig_malla(b, lats, lons, dz, conjuntos, figdir)
 
-    resumen = {"dx_m": ma["dx_m"], "filas": int(b.shape[0]), "columnas": int(b.shape[1]),
-               "columnas_agua": int(agua.sum()), "capas": len(dz), "prof_max_m": round(prof_max, 1),
-               "celdas_abiertas": n_abiertas}
+    # El resumen se actualiza (no se pisa): así una corrida no borra los resultados de la otra
+    p_res = carpeta(cfg, "carpeta_procesados") / "malla_aem3d_resumen.yaml"
+    resumen = {}
+    if p_res.exists():
+        with open(p_res, encoding="utf-8") as f:
+            resumen = yaml.safe_load(f) or {}
+    resumen.update({"dx_m": ma["dx_m"], "filas": int(b.shape[0]), "columnas": int(b.shape[1]),
+                    "columnas_agua": int(agua.sum()), "capas": len(dz), "prof_max_m": round(prof_max, 1),
+                    "celdas_abiertas": n_abiertas, "corrida_inicio": str(t0), "corrida_dias": co["dias"]})
+    programa = ma.get("programa", "aem3d")
+    if programa not in ("aem3d", "aem3d_openmp"):
+        raise SystemExit("malla_aem3d.programa debe ser 'aem3d' o 'aem3d_openmp'")
+    if args.correr or args.corrida:
+        ejecutar("pre_aem3d", caso / "pre")
     if args.correr:
-        resumen.update(correr(caso, pr, cfg, ma.get("programa", "aem3d")))
-    resumen.update({"corrida_inicio": str(t0), "corrida_dias": co["dias"]})
-    with open(carpeta(cfg, "carpeta_procesados") / "malla_aem3d_resumen.yaml", "w", encoding="utf-8") as f:
+        # pre_aem3d escribe la malla en run/infiles: la prueba usa una copia
+        for unf in ("usedata.unf", "sparsedata.unf"):
+            shutil.copy2(caso / "run" / "infiles" / unf, caso / "prueba" / "infiles" / unf)
+        seg = ejecutar(programa, caso / "prueba")
+        r = revisar(caso / "prueba", cfg, pr.get("arranque_h", 3), "Prueba")
+        resumen.update({"programa": programa, "segundos": seg, "prueba_horas": pr["horas"],
+                        "nivel_medio_m": r["nivel_medio_m"], "vel_max_superficie_ms": r["vel_max_ms"],
+                        "dif_max_mareografo_cm": r["dif_max_cm"]})
+    if args.corrida:
+        log.info(f"Corrida completa: {co['dias']} días ({int(co['dias'] * 86400 / dt)} pasos); con 5 hilos tarda "
+                 "~40 min. Se puede seguir con: tail -f " + str(relativa(caso / "run" / f"salida_{programa}.txt")))
+        seg = ejecutar(programa, caso / "run")
+        r = revisar(caso / "run", cfg, pr.get("arranque_h", 3), "Corrida")
+        resumen.update({"corrida_programa": programa, "corrida_minutos": round(seg / 60, 1),
+                        "corrida_salidas": r["salidas"], "corrida_vel_max_ms": r["vel_max_ms"],
+                        "corrida_dif_max_mareografo_cm": r["dif_max_cm"],
+                        "corrida_rmse_mareografo_cm": r["rmse_cm"]})
+    with open(p_res, "w", encoding="utf-8") as f:
         yaml.safe_dump(resumen, f, allow_unicode=True, sort_keys=False)
 
 
-def correr(caso, pr, cfg, programa: str) -> dict:
-    """pre_aem3d y la corrida de prueba; revisa que termine y que el nivel siga la marea."""
-    if programa not in ("aem3d", "aem3d_openmp"):
-        raise SystemExit("malla_aem3d.programa debe ser 'aem3d' o 'aem3d_openmp'")
-    t_ini = None
-    for prog, cwd in (("pre_aem3d", caso / "pre"), (programa, caso / "prueba")):
-        if prog == programa:
-            # pre_aem3d escribe la malla en run/infiles: la prueba usa una copia
-            for unf in ("usedata.unf", "sparsedata.unf"):
-                shutil.copy2(caso / "run" / "infiles" / unf, cwd / "infiles" / unf)
-            t_ini = time.time()
-        exe = shutil.which(prog) or str(RAIZ.parent / "bin" / prog)
-        log.info(f"Ejecutando {prog} en {relativa(cwd)}")
-        r = subprocess.run([exe], cwd=cwd, capture_output=True, text=True)
-        (cwd / f"salida_{prog}.txt").write_text(r.stdout + r.stderr, encoding="utf-8")
-        fin = (r.stdout + r.stderr).strip().splitlines()[-6:]
-        if r.returncode != 0 or (prog == programa and "FINISHED" not in r.stdout):
-            raise SystemExit(f"{prog} falló (código {r.returncode}); ver {relativa(cwd)}/salida_{prog}.txt:\n"
-                             + "\n".join(fin))
-        log.info(f"{prog} terminó bien" + (f" en {time.time() - t_ini:.0f} s" if prog == programa else ""))
-    ds = xr.open_dataset(caso / "prueba" / "ncfiles" / "sheet_top.nc", decode_times=False)
+def ejecutar(prog: str, cwd) -> int:
+    """Corre un programa de AEM3D en cwd, guarda su salida en salida_<prog>.txt e informa el avance.
+
+    Lee el control (run_pre.dat o run_aem3d.dat) del directorio actual, como indica el manual.
+    Con caffeinate (macOS) el equipo no se duerme durante corridas largas."""
+    exe = shutil.which(prog) or str(RAIZ.parent / "bin" / prog)
+    cmd = ([shutil.which("caffeinate"), "-i", exe] if shutil.which("caffeinate") and prog != "pre_aem3d"
+           else [exe])
+    salida = cwd / f"salida_{prog}.txt"
+    log.info(f"Ejecutando {prog} en {relativa(cwd)}")
+    t0 = time.time()
+    with open(salida, "w", encoding="utf-8") as f:
+        proc = subprocess.Popen(cmd, cwd=cwd, stdout=f, stderr=subprocess.STDOUT, text=True)
+        ultimo = t0
+        while proc.poll() is None:
+            time.sleep(2)
+            if time.time() - ultimo >= 60:  # avance cada minuto (última línea "Step: n/N")
+                pasos = [l for l in salida.read_text(errors="ignore").splitlines()[-50:] if l.startswith("Step:")]
+                if pasos:
+                    log.info(f"  {prog}: {pasos[-1].split('Time:')[0].strip()} ({(time.time() - t0) / 60:.0f} min)")
+                ultimo = time.time()
+    texto = salida.read_text(errors="ignore")
+    seg = round(time.time() - t0)
+    if proc.returncode != 0 or (prog != "pre_aem3d" and "FINISHED" not in texto):
+        fin = "\n".join(texto.strip().splitlines()[-6:])
+        raise SystemExit(f"{prog} falló (código {proc.returncode}); ver {relativa(salida)}:\n{fin}")
+    log.info(f"{prog} terminó bien en {seg} s")
+    return seg
+
+
+def revisar(cwd, cfg, arranque_h: float, etiqueta: str) -> dict:
+    """Revisa las salidas: velocidades y nivel en la celda del mareógrafo frente a FES2022."""
+    ds = xr.open_dataset(cwd / "ncfiles" / "sheet_top.nc", decode_times=False)
     h = ds.HEIGHT.values
     h = np.where(np.abs(h) > 1e3, np.nan, h)
     serie = np.nanmean(h.reshape(h.shape[0], -1), axis=1)
     u = np.where(np.abs(ds.U_VELOCITY.values) > 1e3, np.nan, ds.U_VELOCITY.values)
     v = np.where(np.abs(ds.V_VELOCITY.values) > 1e3, np.nan, ds.V_VELOCITY.values)
     vmax = float(np.nanmax(np.hypot(u, v)))
-    log.info(f"Prueba: nivel medio del dominio {[round(float(x), 3) for x in serie]} m; velocidad superficial máxima "
-             f"{vmax:.2f} m/s")
+    log.info(f"{etiqueta}: {len(serie)} salidas horarias; velocidad superficial máxima {vmax:.2f} m/s")
     if not np.isfinite(vmax) or vmax > 3:
         log.warning("[sanidad] velocidades fuera de lo esperable (> 3 m/s): revisar del_t o la batimetría")
     else:
@@ -500,17 +540,19 @@ def correr(caso, pr, cfg, programa: str) -> dict:
         fes.index = fes.index + pd.Timedelta(hours=cfg["proyecto"]["zona_horaria_local"])
     fes_t = fes.reindex(fes.index.union(t)).interpolate("time").reindex(t)  # FES a la hora exacta de salida
     dif = pd.Series(h[:, i, j], index=t) - fes_t.values
-    tras = dif[t >= t[0] + pd.Timedelta(hours=pr.get("arranque_h", 3))].dropna()
+    tras = dif[t >= t[0] + pd.Timedelta(hours=arranque_h)].dropna()
     dmax = float(tras.abs().max()) if len(tras) else float("nan")
-    log.info(f"Mareógrafo (celda a {np.sqrt(d2[i, j]) * 111:.2f} km): AEM3D − FES2022 tras el arranque = "
-             f"{(100 * tras).round(1).tolist()} cm")
+    rmse = float(np.sqrt((tras ** 2).mean())) if len(tras) else float("nan")
+    detalle = (100 * tras).round(1).tolist() if len(tras) <= 12 else f"RMSE {100 * rmse:.1f} cm"
+    log.info(f"Mareógrafo (celda a {np.sqrt(d2[i, j]) * 111:.2f} km): AEM3D − FES2022 tras el arranque: {detalle}; "
+             f"máximo {100 * dmax:.1f} cm")
     if np.isfinite(dmax) and dmax < 0.05:
         log.info("[sanidad] AEM3D reproduce la marea de FES2022 en el mareógrafo (< 5 cm) -> OK")
     else:
         log.warning("[sanidad] AEM3D se aleja de FES2022 en el mareógrafo más de 5 cm: revisar fronteras")
-    return {"programa": programa, "segundos": round(time.time() - t_ini), "prueba_horas": pr["horas"], "nivel_medio_m": [round(float(x), 3) for x in serie],
-            "vel_max_superficie_ms": round(vmax, 3),
-            "dif_max_mareografo_cm": round(100 * dmax, 1) if np.isfinite(dmax) else None}
+    return {"salidas": len(serie), "nivel_medio_m": [round(float(x), 3) for x in serie][:24],
+            "vel_max_ms": round(vmax, 3), "dif_max_cm": round(100 * dmax, 1) if np.isfinite(dmax) else None,
+            "rmse_cm": round(100 * rmse, 1) if np.isfinite(rmse) else None}
 
 
 if __name__ == "__main__":
