@@ -55,9 +55,17 @@ vientos_paracas:
   horas_minimas: 1                # horas sobre el umbral en la ventana para contar un día como evento
   fuente: "metar"                 # era5 | metar : fuente que define el mes candidato
   # "auto" = mes con más eventos según la fuente; "AAAA-MM" = mes fijado a mano.
-  # Se fija 2025-01 (10 eventos en SPSO, empatado con 2025-03) porque es el único mes en que el
-  # mareógrafo IOC pasa el control de calidad: permite validar la marea en el mismo mes del forzamiento.
+  # Se fija 2025-01 (10 eventos en SPSO, empatado con 2025-03; en marzo no hay datos del mareógrafo IOC).
   mes_candidato: "2025-01"
+
+# Viento del forzamiento meteorológico (lo escribe 04 en forzamiento_meteo_mes_candidato.csv)
+forzamiento_viento:
+  # spso    = viento observado en SPSO; huecos con ERA5 corregido y direcciones faltantes con ERA5
+  # era5_qm = ERA5 de la boca corregido por mapeo de cuantiles contra SPSO (por hora local)
+  # era5    = ERA5 de la boca sin corregir
+  # Se usa spso: el mapeo de cuantiles iguala la intensidad, pero con validación cruzada pone los
+  # eventos en los meses equivocados (enero 2025: 1 evento frente a 10 observados).
+  metodo: "spso"
 
 # --- Marea -----------------------------------------------------------------
 mareografo:

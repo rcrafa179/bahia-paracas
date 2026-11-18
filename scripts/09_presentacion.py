@@ -88,6 +88,18 @@ def macros(cfg, proc) -> dict[str, str]:
     m.setdefault("vientoFuerteObs", PEND)
     m.setdefault("vientoFuerteEra", PEND)
 
+    # Viento del forzamiento (04)
+    vf = leer_yaml(proc / "viento_forzamiento_resumen.yaml") or {}
+    m["metodoViento"] = {"spso": "SPSO observado", "era5_qm": "ERA5 corregido", "era5": "ERA5"}.get(
+        vf.get("metodo"), PEND)
+    for k, c in [("horasSpso", "horas_spso"), ("horasRellenas", "horas_rellenas"),
+                 ("eventosForzamiento", "eventos_forzamiento"), ("eventosQmMes", "eventos_era5_qm_cv_mes"),
+                 ("eventosQmTotal", "eventos_era5_qm_cv_total"), ("horasForzamiento", "horas")]:
+        m[k] = str(vf[c]) if vf.get(c) is not None else PEND
+    if comp is not None and "eventos_era5_qm_cv" in comp:
+        m["corrEventosQm"] = fmt(comp[["eventos_metar", "eventos_era5_qm_cv"]].corr().iloc[0, 1], 2)
+    m.setdefault("corrEventosQm", PEND)
+
     # Marea
     sel = leer_yaml(proc / "seleccion_marea.yaml") or {}
     m["seriePrincipal"] = str(sel.get("principal", PEND)).upper()

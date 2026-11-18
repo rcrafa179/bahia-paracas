@@ -97,6 +97,7 @@ python scripts/09_presentacion.py           # escribe las cifras y compila prese
 ```
 
 `02` y `04` deben correr antes que `07`, porque `07` usa el mes candidato (`data/processed/mes_candidato.yaml`).
+`04` siempre reescribe `forzamiento_meteo_mes_candidato.csv` con el viento de `forzamiento_viento.metodo`.
 
 ## 4. Fuentes de datos verificadas
 
@@ -120,8 +121,15 @@ python scripts/09_presentacion.py           # escribe las cifras y compila prese
 - **Mes candidato: enero de 2025**, fijado con `vientos_paracas.mes_candidato: "2025-01"`. En SPSO empata
   con marzo de 2025 (10 eventos cada uno; el desempate automático daría marzo, pero en marzo no hay datos
   del mareógrafo IOC). Con `mes_candidato: auto` lo elige el script.
-- **El forzamiento meteorológico sigue siendo ERA5** (punto de la boca), con el viento subestimado en los
-  eventos. Falta decidir si se escala con la razón observado/ERA5 o se usa el viento de SPSO.
+- **El viento del forzamiento es el de SPSO, no ERA5** (`forzamiento_viento.metodo: spso`). `04` prueba
+  corregir ERA5 por mapeo de cuantiles contra SPSO, por hora local, con validación cruzada (cada mes se
+  corrige con un ajuste que no lo usa). El total de eventos queda bien (95 frente a 101), pero caen en
+  los meses equivocados: la correlación mensual es 0,02 y enero 2025 tiene 1 evento frente a 10. ERA5
+  no sabe *qué días* sopla el viento Paracas (r = 0,36 por la tarde; 0,52 corregido). Por eso el
+  forzamiento usa SPSO observado (729 de 744 h en enero 2025). Las 15 h faltantes se rellenan con ERA5
+  corregido, y las direcciones faltantes (viento variable o calma, 93 h) con la de ERA5. Las demás
+  variables (temperatura, humedad, radiación, presión, lluvia, nubes) siguen siendo de ERA5 en la boca.
+  Limitación: SPSO está en tierra; sobre el agua el viento puede ser algo mayor.
 - **El registro de Pisco tiene un error de escala entre mayo de 2016 y enero de 2025.** Todas las
   constituyentes salen ×1,35 (diurnas y semidiurnas por igual, fases sin cambio). `07b` lo demuestra:
   - la amplitud anual de M2 en Pisco es ~23 cm en 1992–2015 y salta a ~31 cm desde mayo de 2016 (tras un
@@ -145,7 +153,10 @@ python scripts/09_presentacion.py           # escribe las cifras y compila prese
 ## 6. AEM3D
 
 **No se corre ninguna simulación.** Quedan listos, en CSV y en UTC:
-- `data/processed/forzamiento_meteo_mes_candidato.csv`: meteorología horaria del mes candidato.
+- `data/processed/forzamiento_meteo_mes_candidato.csv`: meteorología horaria del mes candidato. El
+  viento (`u10_ms`, `v10_ms`, `vel_ms`, `dir_grados`) sale del método de `forzamiento_viento`. Las
+  columnas `fuente_vel` y `fuente_dir` indican el origen de cada hora; `vel_era5_ms` y `vel_era5_qm_ms`
+  guardan ERA5 sin corregir y corregido, para comparar.
 - `data/processed/marea_frontera_mes_candidato.csv`: nivel del mar cada 15 min en el mareógrafo y en
   cada punto de frontera abierta.
 

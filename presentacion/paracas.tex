@@ -142,13 +142,22 @@
         \item Días con evento: SPSO = \textbf{\eventosMetar}, ERA5 = \textbf{\eventosEra}.
         \item Cuando SPSO supera \umbralParacas{}~m/s, ERA5 da \vientoFuerteEra{}~m/s frente a \vientoFuerteObs{}~m/s observados.
         \item \textbf{Sí: ERA5 subestima los eventos}. Con celdas de $\sim$30~km suaviza el contraste tierra--mar y la canalización local del viento.
-        \item Para forzar AEM3D conviene corregir el viento de ERA5 o usar SPSO.
+        \item Para forzar AEM3D se usa el viento de SPSO (ver más adelante).
       \end{itemize}
   \end{columns}
 \end{frame}
 
 \begin{frame}{Rosas de viento: observado y ERA5}
   \centering\figura{validacion_rosas_era5_spso}{height=0.85\textheight}
+\end{frame}
+
+\begin{frame}{¿Se puede corregir ERA5? Viento para el forzamiento}
+  \centering\figura{viento_forzamiento_mes_candidato}{width=\textwidth,height=0.56\textheight,keepaspectratio}\\[0.2em]
+  \footnotesize
+  \begin{itemize}
+    \item Mapeo de cuantiles por hora local, evaluado dejando cada mes fuera del ajuste: \eventosQmTotal{} días con evento frente a \eventosMetar{} observados, pero en los meses equivocados ($r$ mensual = \corrEventosQm; \mesCandidato: \eventosQmMes{} frente a \eventosCandidato).
+    \item ERA5 no sabe \emph{qué días} sopla el viento Paracas $\Rightarrow$ forzamiento con \textbf{\metodoViento}: \horasSpso{} de \horasForzamiento{}~h observadas, \horasRellenas{}~h rellenas con ERA5 corregido; conserva los \eventosForzamiento{} eventos.
+  \end{itemize}
 \end{frame}
 
 % ===================================================================
@@ -266,7 +275,7 @@
         \item Mes candidato: \textbf{\mesCandidato} (definido con \fuenteCandidato).
         \item Marea de FES2022 cada 15~min en las fronteras norte y oeste (CSV).
         \item Validación con el IOC de enero 2025: RMSE \rmseCandSin~cm; corregido $\times$\factorCandidato{} (error de escala, factor del QC): \rmseCandCorr~cm.
-        \item Meteorología horaria de ERA5 en la boca (CSV).
+        \item Meteorología horaria de ERA5 en la boca; viento de \metodoViento{} (CSV).
         \item \textbf{No se corrió AEM3D}: el formato de entrada se definirá con la plantilla del curso.
       \end{itemize}
   \end{columns}
@@ -304,7 +313,8 @@
     \item Marea \claseMarea{} ($F$ = \factorF), con un rango de sicigia observado de $\sim$\rangoSicigiaObs~m.
     \item El registro de Pisco tiene un error de escala ($\times$\razonError) entre 2016 y enero de 2025, detectado con Callao, San Juan y FES2022; se analizó el IOC \ventanaPrincipal{} con referencia UHSLC \anioUhslc.
     \item FES2022 reproduce la marea de Pisco ($\Delta A_{M_2}$ = \dAmMdosFes~cm, $\Delta g_{M_2}$ = \dgMdosFes$^\circ$): el forzamiento de frontera es confiable.
-    \item Pendiente: batimetría de detalle (carta DHN), corrección del viento de ERA5 y exportación al formato de AEM3D.
+    \item ERA5 corregido por cuantiles iguala la intensidad pero no la cronología de los eventos: el forzamiento usa el viento de SPSO (estación en tierra: sobre el agua puede ser algo mayor).
+    \item Pendiente: batimetría de detalle (carta DHN) y exportación al formato de AEM3D.
   \end{itemize}
 \end{frame}
 
