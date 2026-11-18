@@ -29,6 +29,7 @@ paracas/
     ├── 03_metar_download.py       08_bathymetry_gebco.py
     ├── 04_meteo_validation.py     09_presentacion.py
     │                              10_exportar_aem3d.py
+    │                              11_malla_aem3d.py
     ├── 05_tide_gauge_download.py
     └── utils/  (config, logs, gráficos, viento, ERA5, verificaciones de sanidad)
 ```
@@ -98,6 +99,7 @@ python scripts/09_presentacion.py           # escribe las cifras y compila prese
 
 # --- AEM3D ---
 python scripts/10_exportar_aem3d.py         # archivos de forzamiento de AEM3D (necesita 04 y 07)
+python scripts/11_malla_aem3d.py --correr   # malla y caso de prueba; corre pre_aem3d y 6 h de AEM3D
 ```
 
 `02` y `04` deben correr antes que `07`, porque `07` usa el mes candidato (`data/processed/mes_candidato.yaml`).
@@ -185,9 +187,31 @@ Cómo se verificó el formato, sin inventarlo:
 - **Prueba con AEM3D:** se corrió el ejemplo Lagoon (en una copia temporal) con estos dos archivos en
   vez de los suyos. AEM3D los leyó sin errores y el nivel del agua siguió la marea exportada.
 
-Falta para correr Paracas, porque son decisiones de diseño de la malla:
-- la batimetría y el `bc.dat` del preprocesador, con los conjuntos 1 y 2 sobre las fronteras abiertas;
-- el resto de `run_aem3d.dat`.
+**Malla y caso de prueba** (`11_malla_aem3d.py`, en `data/processed/aem3d/caso_paracas/`, con la misma
+estructura que `~/AEM3D/Model/Lagoon`: `pre/` y `run/`). Decisiones de la malla, tomadas el 2026-11-18:
+- **Horizontal:** celdas de 250 m con el norte arriba, GEBCO interpolado. Son 158 × 153 celdas con el
+  anillo exterior y 14 363 columnas de agua. Las celdas de menos de 1,5 m se profundizan a 1,5 m para
+  que no se sequen.
+- **Fronteras abiertas** (`open_cell`): norte = 1 (130 celdas), oeste = 2 (156) y sur = 3 (91). El borde
+  sur es mar abierto, así que `modelo_marea.fronteras` y `aem3d.bc_frontera` incluyen `sur`.
+- **Capas:** 50 capas estiradas, de 1 m hasta 25 m de profundidad y luego más gruesas (hasta 12 m) hasta
+  el fondo real (171 m).
+- **Formato:** `bathymetry.dat`, `bc.dat` y `run_pre.dat` según el manual (cap. 2). `run_aem3d.dat` usa
+  las palabras clave del ejemplo Lagoon.
+
+`--correr` ejecuta `pre_aem3d` y una corrida **barotrópica** de 6 h: marea y viento, sin temperatura,
+salinidad ni calor (con `idensity = 0`, AEM3D exige `iclosure = 0`). Resultado:
+- termina sin errores en ~1,5 min y la corriente máxima es 0,12 m/s;
+- en la celda del mareógrafo, AEM3D reproduce la marea de FES2022 con 1 cm de diferencia como máximo,
+  pasadas las 3 h de arranque.
+
+Escalado de esa prueba, un mes barotrópico tardaría unas 3 h en un núcleo; `aem3d_openmp` lo acorta.
+
+Falta para la corrida completa del mes: activar temperatura, salinidad, densidad y calor (`iheat_input`,
+`itemperature`, `isalinity`, `idensity` = 1, `iclosure` = 6). Para eso se necesitan perfiles iniciales
+de temperatura y salinidad de la bahía (`initial_profile_file`) y, en las fronteras abiertas,
+`profile_boundary_condition_file`. No hay esos datos en el repositorio: hay que conseguirlos (IMARPE,
+cruceros o Copernicus Marine) y no se inventan.
 
 ## 7. Espacio en disco
 
@@ -203,3 +227,25 @@ Medido al terminar (periodo completo, sin FES2022b ni GEBCO):
 | **Total del repositorio** | **≈ 51 MB** |
 | GEBCO recortado | < 1 MB |
 | FES2022b (solo elevaciones, 15 constituyentes) | 2,3 GB (medido); `07` guarda un recorte regional de pocos MB, pero `07b` necesita los globales (Callao y San Juan quedan fuera del recorte) |
+
+## 8. Referencias
+
+**Datos**
+- Hersbach, H., et al. (2020). The ERA5 global reanalysis. *Quarterly Journal of the Royal Meteorological Society*, 146(730), 1999–2049. https://doi.org/10.1002/qj.3803
+- Iowa Environmental Mesonet (IEM). ASOS/METAR, estación SPSO (Pisco). Iowa State University. https://mesonet.agron.iastate.edu/
+- Flanders Marine Institute (VLIZ); Intergovernmental Oceanographic Commission (IOC). Sea level station monitoring facility. https://doi.org/10.14284/482 — estaciones `pisco` y `pisc2`.
+- Caldwell, P. C., Merrifield, M. A., y Thompson, P. R. (2015). Sea level measured by tide gauges from global oceans — the Joint Archive for Sea Level holdings (NCEI Accession 0019568). NOAA NCEI. https://doi.org/10.7289/V5V40S7W — UHSLC 683 Pisco, 093 Callao, 096 San Juan.
+- AVISO / CNES / LEGOS / NOVELTIS. FES2022b, elevaciones de marea oceánica (grillas extrapoladas). https://doi.org/10.24400/527896/a01-2024.004
+- GEBCO Compilation Group (2026). GEBCO_2026 Grid. https://doi.org/10.5285/4f68d5c7-45eb-f999-e063-7086abc036fa
+
+**Métodos y software**
+- Codiga, D. L. (2011). *Unified Tidal Analysis and Prediction Using the UTide Matlab Functions*. GSO Technical Report 2011-01, University of Rhode Island. (Versión Python `utide` 0.4.)
+- Pawlowicz, R., Beardsley, B., y Lentz, S. (2002). Classical tidal harmonic analysis including error estimates in MATLAB using T_TIDE. *Computers & Geosciences*, 28(8), 929–937.
+- Sutterley, T. C., et al. pyTMD: Python-based tidal prediction software (v3.1). https://github.com/tsutterley/pyTMD
+- Pugh, D., y Woodworth, P. (2014). *Sea-Level Science: Understanding Tides, Surges, Tsunamis and Mean Sea-Level Changes*. Cambridge University Press. — factor de forma y rangos de marea.
+- Welch, P. D. (1967). The use of fast Fourier transform for the estimation of power spectra. *IEEE Transactions on Audio and Electroacoustics*, 15(2), 70–73.
+- Alduchov, O. A., y Eskridge, R. E. (1996). Improved Magnus form approximation of saturation vapor pressure. *Journal of Applied Meteorology*, 35(4), 601–609.
+- Panofsky, H. A., y Brier, G. W. (1968). *Some Applications of Statistics to Meteorology*. Pennsylvania State University. — mapeo de cuantiles.
+- Maraun, D. (2016). Bias correcting climate change simulations — a critical review. *Current Climate Change Reports*, 2, 211–220.
+- Hoyer, S., y Hamman, J. (2017). xarray: N-D labeled arrays and datasets in Python. *Journal of Open Research Software*, 5(1), 10.
+- Hodges, B., y Dallimore, C. *AEM3D User Manual* y *Science Manual*, v1.1. Hydronumerics. (En `~/AEM3D/docs/`.)

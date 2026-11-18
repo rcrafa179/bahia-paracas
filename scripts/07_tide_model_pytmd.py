@@ -232,16 +232,17 @@ def fig_comparacion(comp, destacar, figdir):
 
 
 def fig_fronteras(t, figdir):
-    fig, axs = plt.subplots(2, 2, figsize=(12, 7), sharex="col")
-    for j, fr in enumerate(t.frontera.unique()):
+    fronteras = list(t.frontera.unique())
+    fig, axs = plt.subplots(2, len(fronteras), figsize=(6 * len(fronteras), 7), sharex="col", squeeze=False)
+    for j, fr in enumerate(fronteras):
         sub = t[t.frontera == fr]
         coord = "lon" if fr in ("norte", "sur") else "lat"
         for c in ["M2", "S2", "K1", "O1"]:
             s = sub[sub.constituyente == c].sort_values(coord)
-            axs[0, j % 2].plot(s[coord], 100 * s.amplitud_m, "o-", ms=3, label=c)
-            axs[1, j % 2].plot(s[coord], s.fase_g_grados, "o-", ms=3, label=c)
-        axs[0, j % 2].set_title(f"Frontera {fr}")
-        axs[1, j % 2].set_xlabel("Longitud (°)" if coord == "lon" else "Latitud (°)")
+            axs[0, j].plot(s[coord], 100 * s.amplitud_m, "o-", ms=3, label=c)
+            axs[1, j].plot(s[coord], s.fase_g_grados, "o-", ms=3, label=c)
+        axs[0, j].set_title(f"Frontera {fr}")
+        axs[1, j].set_xlabel("Longitud (°)" if coord == "lon" else "Latitud (°)")
     axs[0, 0].set_ylabel("Amplitud (cm)")
     axs[1, 0].set_ylabel("Fase de Greenwich (°)")
     axs[0, 0].legend(fontsize=8)

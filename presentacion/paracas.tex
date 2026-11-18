@@ -276,9 +276,18 @@
         \item Marea FES2022 cada 15~min en las fronteras norte y oeste. Validación con IOC: RMSE \rmseCandSin~cm; corregido $\times$\factorCandidato: \rmseCandCorr~cm.
         \item Meteorología ERA5 horaria; viento de \metodoViento.
         \item Formato AEM3D (\texttt{10\_exportar\_aem3d.py}), probado en el ejemplo Lagoon: AEM3D lo lee y sigue la marea.
-        \item \textbf{No se corrió Paracas}: falta la malla del preprocesador.
+        \item Malla y prueba de \pruebaHoras~h en AEM3D: siguiente diapositiva.
       \end{itemize}
   \end{columns}
+\end{frame}
+
+\begin{frame}{Malla de AEM3D y corrida de prueba}
+  \centering\figura{aem3d_malla}{width=\textwidth,height=0.55\textheight,keepaspectratio}\\[0.2em]
+  \footnotesize
+  \begin{itemize}
+    \item Celdas de \mallaDx~m: \mallaFilas$\times$\mallaColumnas{} (con anillo exterior), \mallaAgua{} columnas de agua y \mallaCapas{} capas (1~m hasta 25~m, luego más gruesas hasta \mallaProfMax~m). Fronteras abiertas norte, oeste y sur con marea de FES2022.
+    \item Prueba barotrópica de \pruebaHoras~h (marea y viento): sin errores, corriente máxima \pruebaVelMax~m/s; en el mareógrafo AEM3D reproduce FES2022 con \pruebaDifMareografo~cm de diferencia máxima.
+  \end{itemize}
 \end{frame}
 
 % ===================================================================
@@ -314,7 +323,28 @@
     \item El registro de Pisco tiene un error de escala ($\times$\razonError) entre 2016 y enero de 2025, detectado con Callao, San Juan y FES2022; se analizó el IOC \ventanaPrincipal{} con referencia UHSLC \anioUhslc.
     \item FES2022 reproduce la marea de Pisco ($\Delta A_{M_2}$ = \dAmMdosFes~cm, $\Delta g_{M_2}$ = \dgMdosFes$^\circ$): el forzamiento de frontera es confiable.
     \item ERA5 corregido por cuantiles iguala la intensidad pero no la cronología de los eventos: el forzamiento usa el viento de SPSO (estación en tierra: sobre el agua puede ser algo mayor).
-    \item Pendiente: batimetría de detalle (carta DHN) y malla de AEM3D para correr la simulación.
+    \item Pendiente: la corrida baroclínica del mes (perfiles iniciales de temperatura y salinidad) y la batimetría de detalle (carta DHN).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[allowframebreaks]{Referencias}
+  \scriptsize
+  \begin{itemize}
+    \item Hersbach, H., et al. (2020). The ERA5 global reanalysis. \emph{Q. J. R. Meteorol. Soc.}, 146, 1999--2049. doi:10.1002/qj.3803
+    \item Iowa Environmental Mesonet. ASOS/METAR, estación SPSO. Iowa State University.
+    \item VLIZ; IOC. Sea level station monitoring facility. doi:10.14284/482
+    \item Caldwell, P. C., Merrifield, M. A., Thompson, P. R. (2015). Joint Archive for Sea Level holdings (UHSLC). NOAA NCEI. doi:10.7289/V5V40S7W
+    \item AVISO. FES2022b, elevaciones de marea oceánica. doi:10.24400/527896/a01-2024.004
+    \item GEBCO Compilation Group (2026). GEBCO\_2026 Grid. doi:10.5285/4f68d5c7-45eb-f999-e063-7086abc036fa
+    \item Codiga, D. L. (2011). Unified tidal analysis and prediction using the UTide Matlab functions. GSO Tech. Rep. 2011-01, URI.
+    \item Pawlowicz, R., Beardsley, B., Lentz, S. (2002). T\_TIDE. \emph{Comput. Geosci.}, 28, 929--937.
+    \item Sutterley, T. C., et al. pyTMD: Python-based tidal prediction software (v3.1).
+    \item Pugh, D., Woodworth, P. (2014). \emph{Sea-Level Science}. Cambridge University Press.
+    \item Welch, P. D. (1967). \emph{IEEE Trans. Audio Electroacoust.}, 15(2), 70--73.
+    \item Alduchov, O. A., Eskridge, R. E. (1996). \emph{J. Appl. Meteorol.}, 35, 601--609.
+    \item Panofsky, H. A., Brier, G. W. (1968). \emph{Some Applications of Statistics to Meteorology}. Penn State Univ.
+    \item Maraun, D. (2016). Bias correcting climate change simulations. \emph{Curr. Clim. Change Rep.}, 2, 211--220.
+    \item Hodges, B., Dallimore, C. \emph{AEM3D User Manual} y \emph{Science Manual}. Hydronumerics.
   \end{itemize}
 \end{frame}
 

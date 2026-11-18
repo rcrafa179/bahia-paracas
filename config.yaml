@@ -145,9 +145,8 @@ modelo_marea:
   fronteras:
     norte: {lat_ini: -13.60, lon_ini: -76.50, lat_fin: -13.60, lon_fin: -76.20, n: 13}
     oeste: {lat_ini: -13.95, lon_ini: -76.50, lat_fin: -13.60, lon_fin: -76.50, n: 15}
-    # Nota: el borde sur (-13.95) también es mar entre -76.50 y ~-76.28.
-    # Para activarlo, descomentar:
-    # sur: {lat_ini: -13.95, lon_ini: -76.50, lat_fin: -13.95, lon_fin: -76.28, n: 10}
+    # El borde sur también es mar (en la malla de 250 m, agua entre -76.50 y -76.29): frontera abierta
+    sur: {lat_ini: -13.95, lon_ini: -76.50, lat_fin: -13.95, lon_fin: -76.29, n: 10}
 
 # --- Exportación a AEM3D (scripts/10_exportar_aem3d.py) ----------------------------
 # Formato "Version 1" de los archivos de condiciones de contorno temporales, verificado en el manual
@@ -160,10 +159,27 @@ aem3d:
   margen_horas: 24                # 04 y 07 extienden el forzamiento este margen a cada lado del mes
   # Número de conjunto de celdas de cada frontera abierta, tal como se definan en el bc.dat del
   # preprocesador (pre_aem3d). 0 está reservado para la superficie (meteorología).
-  bc_frontera: {norte: 1, oeste: 2}
+  bc_frontera: {norte: 1, oeste: 2, sur: 3}
   # Onda larga: "CLOUDS" (nubosidad de ERA5; 9 columnas, formato de la guía del curso) o
   # "LW_RAD_IN" (radiación de onda larga incidente de ERA5, medida en vez de estimada).
   onda_larga: "CLOUDS"
+
+# Malla del preprocesador de AEM3D (scripts/11_malla_aem3d.py). Formato de bathymetry.dat, bc.dat y
+# run_pre.dat según el manual (cap. 2) y el ejemplo ~/AEM3D/Model/Lagoon/pre.
+malla_aem3d:
+  carpeta: "data/processed/aem3d/caso_paracas"   # caso completo: pre/ y run/ (como Model/Lagoon)
+  dx_m: 250                       # celda horizontal uniforme (m); norte arriba (filas i hacia el sur)
+  profundidad_minima_m: 1.5       # celdas de agua más someras se profundizan a este valor (evita secado)
+  capas:                          # espesores de arriba hacia abajo (estiradas)
+    dz_superficie_m: 1.0          # espesor constante cerca de la superficie...
+    hasta_m: 25.0                 # ...hasta esta profundidad (cubre toda la bahía)
+    factor: 1.15                  # luego cada capa es este factor más gruesa
+    dz_max_m: 12.0                # espesor máximo de una capa
+    margen_superior_m: 1.5        # altura de la malla sobre el nivel medio (marea alta + margen)
+  prueba:                         # corrida corta de verificación (barotrópica: solo marea y viento)
+    del_t_s: 30
+    horas: 6
+    arranque_h: 3                 # horas iniciales de ajuste que no se comparan con FES2022
 
 # --- Batimetría --------------------------------------------------------------
 batimetria:

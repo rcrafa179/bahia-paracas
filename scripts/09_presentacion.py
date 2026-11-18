@@ -100,6 +100,14 @@ def macros(cfg, proc) -> dict[str, str]:
         m["corrEventosQm"] = fmt(comp[["eventos_metar", "eventos_era5_qm_cv"]].corr().iloc[0, 1], 2)
     m.setdefault("corrEventosQm", PEND)
 
+    # Malla de AEM3D (11)
+    ma = leer_yaml(proc / "malla_aem3d_resumen.yaml") or {}
+    for k, c in [("mallaDx", "dx_m"), ("mallaFilas", "filas"), ("mallaColumnas", "columnas"),
+                 ("mallaAgua", "columnas_agua"), ("mallaCapas", "capas"), ("mallaProfMax", "prof_max_m"),
+                 ("pruebaHoras", "prueba_horas"), ("pruebaVelMax", "vel_max_superficie_ms"),
+                 ("pruebaDifMareografo", "dif_max_mareografo_cm")]:
+        m[k] = str(ma[c]) if ma.get(c) is not None else PEND
+
     # Marea
     sel = leer_yaml(proc / "seleccion_marea.yaml") or {}
     m["seriePrincipal"] = str(sel.get("principal", PEND)).upper()
