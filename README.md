@@ -99,7 +99,8 @@ python scripts/09_presentacion.py           # escribe las cifras y compila prese
 
 # --- AEM3D ---
 python scripts/10_exportar_aem3d.py         # archivos de forzamiento de AEM3D (necesita 04 y 07)
-python scripts/11_malla_aem3d.py --correr   # malla y caso de prueba; corre pre_aem3d y 6 h de AEM3D
+python scripts/11_malla_aem3d.py --correr   # malla y caso; corre pre_aem3d y la prueba de 6 h (en prueba/)
+cd data/processed/aem3d/caso_paracas/run && aem3d_openmp   # corrida de 14 días (~40 min con 5 hilos)
 ```
 
 `02` y `04` deben correr antes que `07`, porque `07` usa el mes candidato (`data/processed/mes_candidato.yaml`).
@@ -199,8 +200,23 @@ estructura que `~/AEM3D/Model/Lagoon`: `pre/` y `run/`). Decisiones de la malla,
 - **Formato:** `bathymetry.dat`, `bc.dat` y `run_pre.dat` según el manual (cap. 2). `run_aem3d.dat` usa
   las palabras clave del ejemplo Lagoon.
 
-`--correr` ejecuta `pre_aem3d` y una corrida **barotrópica** de 6 h: marea y viento, sin temperatura,
-salinidad ni calor (con `idensity = 0`, AEM3D exige `iclosure = 0`). Resultado:
+**Versión demo de AEM3D: máximo 14 días.** La instalación es la versión demo, que corta con el error
+"The maximum simulation time in the demo version of AEM3D is 2 weeks". Por eso el caso no simula el mes
+entero:
+- `run/` es la corrida de `malla_aem3d.corrida`: **14 días desde el 18 de enero de 2025** (hora local),
+  40 320 pasos de 30 s. Es la ventana de 14 días de enero con más eventos Paracas en SPSO (7 de 10:
+  días 18, 19, 22, 23, 24, 27 y 31; quedan fuera los del 7 al 9) y cubre casi un ciclo de sicigia y
+  cuadratura (14,8 días).
+- Se comprobó que la versión demo acepta esos 14 días: arrancó sin error y se detuvo a propósito.
+- El nivel inicial (`DEFAULT_HEIGHT`) es la marea en las fronteras a esa hora (+0,21 m).
+- El script se niega a escribir más de `malla_aem3d.max_dias_licencia` días.
+- Para el mes completo hace falta la licencia completa (curso o Hydronumerics).
+
+La latitud para Coriolis va en la batimetría: esta versión no acepta `latitude` en `run_aem3d.dat`.
+
+`--correr` ejecuta `pre_aem3d` y una corrida **barotrópica** de 6 h en `prueba/`, con la misma fecha de
+inicio y sin tocar `run/`: marea y viento, sin temperatura, salinidad ni calor (con `idensity = 0`,
+AEM3D exige `iclosure = 0`). Resultado:
 - termina sin errores en ~1,5 min y la corriente máxima es 0,12 m/s;
 - en la celda del mareógrafo, AEM3D reproduce la marea de FES2022 con 1 cm de diferencia como máximo,
   pasadas las 3 h de arranque.
@@ -216,9 +232,10 @@ se midió:
 | 10–11 | 42–47 s |
 
 Usar más de 5 hilos no acelera, porque los núcleos lentos frenan a los demás. El resultado con 5 hilos
-coincide con el de 1 hilo: el nivel difiere como mucho 0,03 mm. Para correr el mes completo en modo
-barotrópico, poner `malla_aem3d.prueba.horas: 744`: tardaría ~1–1,5 h (un núcleo: ~3 h). Para correrlo a
-mano: `cd data/processed/aem3d/caso_paracas/run && aem3d_openmp`.
+coincide con el de 1 hilo: el nivel difiere como mucho 0,03 mm. La corrida de 14 días avanza ~17 pasos
+por segundo con 5 hilos, así que tarda ~40 min. Para correrla:
+`cd data/processed/aem3d/caso_paracas/run && caffeinate -i aem3d_openmp > salida.txt 2>&1`
+(`caffeinate` evita que el Mac se duerma).
 
 Falta para la corrida completa del mes: activar temperatura, salinidad, densidad y calor (`iheat_input`,
 `itemperature`, `isalinity`, `idensity` = 1, `iclosure` = 6). Para eso se necesitan perfiles iniciales

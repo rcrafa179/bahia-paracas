@@ -7,9 +7,13 @@ Arma un caso completo con la estructura de ~/AEM3D/Model/Lagoon:
     pre/run_pre.dat                    control del preprocesador
     pre/bathymetry/paracas_bathymetry.dat
     pre/bathymetry/paracas_bc.dat      conjuntos open_cell de cada frontera abierta
-    run/run_aem3d.dat                  corrida de PRUEBA (barotrópica: marea y viento)
-    run/infiles/datablock.xml          salidas (nivel y velocidades en superficie)
+    run/run_aem3d.dat                  corrida de malla_aem3d.corrida (barotrópica: marea y viento),
+                                       lista para correr a mano: cd run && aem3d_openmp
+    run/infiles/datablock.xml          salidas horarias (nivel y velocidades en superficie)
     run/infiles/*.dat                  forzamiento copiado de data/processed/aem3d (script 10)
+    prueba/                            verificación corta (--correr), misma fecha de inicio
+
+La versión demo de AEM3D permite como máximo 14 días de simulación (malla_aem3d.max_dias_licencia).
 
 Formatos según el manual (~/AEM3D/docs/AEM3D_User.pdf, cap. 2) y el ejemplo Lagoon:
   * bathymetry.dat: palabras clave, vectores dx/dy/dz y la matriz BATHYMETRY DATA con x_rows filas
@@ -23,7 +27,7 @@ estiradas hasta el fondo real.
 
 Uso:
     python scripts/11_malla_aem3d.py              # arma el caso
-    python scripts/11_malla_aem3d.py --correr     # además corre pre_aem3d y la prueba corta
+    python scripts/11_malla_aem3d.py --correr     # además corre pre_aem3d y la prueba corta (en prueba/)
 """
 from __future__ import annotations
 
@@ -222,13 +226,38 @@ def escribir_run_pre(destino, bati, bc):
     destino.write_text("\n".join(L) + "\n", encoding="ascii")
 
 
-def escribir_run_aem3d(destino, cfg, met, mar, inicio, del_t, iteraciones, h_ini, hilos=1):
+def fecha_cwr(t: pd.Timestamp) -> str:
+    """yyyyddd.dddddd (formato CWR de AEM3D)."""
+    frac = (t - t.normalize()).total_seconds() / 86400.0
+    return f"{t.year}{t.dayofyear:03d}{f'{frac:.6f}'[1:]}"
+
+
+def a_hora_modelo(indice_utc, cfg):
+    if cfg["aem3d"]["hora"] == "local":
+        return indice_utc + pd.Timedelta(hours=cfg["proyecto"]["zona_horaria_local"])
+    return indice_utc
+
+
+def cobertura_y_nivel(cfg, t0: pd.Timestamp, t1: pd.Timestamp) -> float:
+    """Comprueba que el forzamiento cubra [t0, t1] (hora del modelo) y devuelve la marea en t0."""
+    proc = carpeta(cfg, "carpeta_procesados")
+    mar = pd.read_csv(proc / "marea_frontera_mes_candidato.csv", index_col=0, parse_dates=True)
+    met = pd.read_csv(proc / "forzamiento_meteo_mes_candidato.csv", index_col=0, parse_dates=True)
+    for nombre, idx in (("marea", a_hora_modelo(mar.index, cfg)), ("meteorología", a_hora_modelo(met.index, cfg))):
+        if idx[0] > t0 or idx[-1] < t1:
+            raise SystemExit(f"El forzamiento de {nombre} cubre {idx[0]} a {idx[-1]} y la corrida va de {t0} a {t1}: "
+                             "ajusta malla_aem3d.corrida o aem3d.margen_horas y corre 04, 07 y 10")
+    h = mar.filter(regex="|".join(f"^{k}_" for k in cfg["aem3d"]["bc_frontera"])).mean(axis=1)
+    h.index = a_hora_modelo(h.index, cfg)
+    return float(h.reindex(h.index.union([t0])).interpolate("time").loc[t0])
+
+
+def escribir_run_aem3d(destino, cfg, met, mar, inicio, del_t, iteraciones, h_ini, hilos=1, titulo="prueba"):
     """run_aem3d.dat de PRUEBA, con las palabras clave del ejemplo Lagoon (misma versión de AEM3D).
 
     Barotrópica: sin temperatura, salinidad ni calor (no hay perfiles iniciales medidos de la bahía).
     Sirve para verificar la malla, la marea en las fronteras y el viento."""
-    lat = cfg["mareografo"]["lat"]
-    v = [("'Bahia de Paracas - prueba'", "TITLE"), ("'scripts/11_malla_aem3d.py'", "ANALYST"),
+    v = [(f"'Bahia de Paracas - {titulo}'", "TITLE"), ("'scripts/11_malla_aem3d.py'", "ANALYST"),
          ("'UNMSM'", "ORGANIZATION"), ("'Prueba barotropica: marea FES2022 y viento SPSO'", "COMMENT"),
          ("'NONE'", "CASE_KEYWORD"),
          ("!", "Time controls"),
@@ -241,8 +270,8 @@ def escribir_run_aem3d(destino, cfg, met, mar, inicio, del_t, iteraciones, h_ini
          (3, "idatablock"),
          ("!", "Model settings and controls"),
          (0.08, "mean_albedo"), (0.0, "time_zone"), (0.0013, "wind_cd"), (0.005, "drag_btm_cd"),
+         # La latitud (Coriolis) la toma de la batimetría: esta versión no acepta 'latitude' aquí
          (1.0, "model_grav_damp_x"), (1.0, "model_grav_damp_y"), (2, "ic_dist_weighting"),
-         (lat, "latitude"),
          ("!", "Default (uniformly distributed) values"),
          (f"{h_ini:.3f}", "DEFAULT_HEIGHT"), (0.0, "DEFAULT_WIND_SPEED"), (0.0, "DEFAULT_WIND_DIR"),
          (0.4, "DEFAULT_PAR_EXTINCTION"), (1.0, "DEFAULT_NIR_EXTINCTION"), (1.0, "DEFAULT_UVA_EXTINCTION"),
@@ -349,7 +378,8 @@ def main():
     ma, ae = cfg["malla_aem3d"], cfg["aem3d"]
     figdir = carpeta(cfg, "carpeta_figuras")
     caso = ruta(ma["carpeta"])
-    for sub in ("pre/bathymetry", "run/infiles", "run/ncfiles", "run/unffiles", "run/txtfiles"):
+    for sub in ("pre/bathymetry", "run/infiles", "run/ncfiles", "run/unffiles", "run/txtfiles",
+                "prueba/infiles", "prueba/ncfiles", "prueba/unffiles", "prueba/txtfiles"):
         (caso / sub).mkdir(parents=True, exist_ok=True)
 
     abiertos = {LADOS[k] for k in ae["bc_frontera"]}
@@ -390,17 +420,26 @@ def main():
     for a in (met, mar):
         if not (origen / a).exists():
             raise SystemExit(f"Falta {a}: corre antes scripts/10_exportar_aem3d.py")
-        shutil.copy2(origen / a, caso / "run" / "infiles" / a)
-    texto = (origen / "LEEME_aem3d.txt").read_text(encoding="utf-8")
-    inicio = next(l.split()[0] for l in texto.splitlines() if l.strip().endswith("start_date_cwr"))
-    h_ini = float(next(l.split()[0] for l in texto.splitlines() if l.strip().endswith("DEFAULT_HEIGHT")))
-    pr = ma["prueba"]
-    iteraciones = int(pr["horas"] * 3600 / pr["del_t_s"])
-    escribir_run_aem3d(caso / "run" / "run_aem3d.dat", cfg, met, mar, inicio, pr["del_t_s"], iteraciones, h_ini,
-                       int(ma.get("hilos", 1)))
-    (caso / "run" / "infiles" / "datablock.xml").write_text(
-        DATABLOCK.format(intervalo=int(3600 / pr["del_t_s"])), encoding="ascii")
-    log.info(f"Caso escrito en {relativa(caso)} (prueba: {pr['horas']} h con del_t = {pr['del_t_s']} s)")
+        for destino in ("run", "prueba"):
+            shutil.copy2(origen / a, caso / destino / "infiles" / a)
+    co, pr = ma["corrida"], ma["prueba"]
+    dt = co["del_t_s"]
+    if co["dias"] > ma.get("max_dias_licencia", 14):
+        raise SystemExit(f"malla_aem3d.corrida.dias = {co['dias']}: la versión demo de AEM3D permite como máximo "
+                         f"{ma.get('max_dias_licencia', 14)} días")
+    t0 = pd.Timestamp(co["inicio"])
+    t1 = t0 + pd.Timedelta(days=co["dias"])
+    h_ini = cobertura_y_nivel(cfg, t0, t1)
+    hilos = int(ma.get("hilos", 1))
+    for destino, horas, titulo in (("run", co["dias"] * 24, f"{co['dias']} dias desde {co['inicio']}"),
+                                   ("prueba", pr["horas"], f"prueba {pr['horas']} h")):
+        it = int(round(horas * 3600 / dt))
+        escribir_run_aem3d(caso / destino / "run_aem3d.dat", cfg, met, mar, fecha_cwr(t0), dt, it, h_ini, hilos, titulo)
+        (caso / destino / "infiles" / "datablock.xml").write_text(DATABLOCK.format(intervalo=int(3600 / dt)),
+                                                                  encoding="ascii")
+    log.info(f"Caso escrito en {relativa(caso)}: run/ = {co['dias']} días desde {t0:%Y-%m-%d %H:%M} "
+             f"({int(co['dias'] * 86400 / dt)} pasos de {dt} s, nivel inicial {h_ini:+.3f} m); "
+             f"prueba/ = {pr['horas']} h")
     fig_malla(b, lats, lons, dz, conjuntos, figdir)
 
     resumen = {"dx_m": ma["dx_m"], "filas": int(b.shape[0]), "columnas": int(b.shape[1]),
@@ -408,6 +447,7 @@ def main():
                "celdas_abiertas": n_abiertas}
     if args.correr:
         resumen.update(correr(caso, pr, cfg, ma.get("programa", "aem3d")))
+    resumen.update({"corrida_inicio": str(t0), "corrida_dias": co["dias"]})
     with open(carpeta(cfg, "carpeta_procesados") / "malla_aem3d_resumen.yaml", "w", encoding="utf-8") as f:
         yaml.safe_dump(resumen, f, allow_unicode=True, sort_keys=False)
 
@@ -417,8 +457,11 @@ def correr(caso, pr, cfg, programa: str) -> dict:
     if programa not in ("aem3d", "aem3d_openmp"):
         raise SystemExit("malla_aem3d.programa debe ser 'aem3d' o 'aem3d_openmp'")
     t_ini = None
-    for prog, cwd in (("pre_aem3d", caso / "pre"), (programa, caso / "run")):
+    for prog, cwd in (("pre_aem3d", caso / "pre"), (programa, caso / "prueba")):
         if prog == programa:
+            # pre_aem3d escribe la malla en run/infiles: la prueba usa una copia
+            for unf in ("usedata.unf", "sparsedata.unf"):
+                shutil.copy2(caso / "run" / "infiles" / unf, cwd / "infiles" / unf)
             t_ini = time.time()
         exe = shutil.which(prog) or str(RAIZ.parent / "bin" / prog)
         log.info(f"Ejecutando {prog} en {relativa(cwd)}")
@@ -429,7 +472,7 @@ def correr(caso, pr, cfg, programa: str) -> dict:
             raise SystemExit(f"{prog} falló (código {r.returncode}); ver {relativa(cwd)}/salida_{prog}.txt:\n"
                              + "\n".join(fin))
         log.info(f"{prog} terminó bien" + (f" en {time.time() - t_ini:.0f} s" if prog == programa else ""))
-    ds = xr.open_dataset(caso / "run" / "ncfiles" / "sheet_top.nc", decode_times=False)
+    ds = xr.open_dataset(caso / "prueba" / "ncfiles" / "sheet_top.nc", decode_times=False)
     h = ds.HEIGHT.values
     h = np.where(np.abs(h) > 1e3, np.nan, h)
     serie = np.nanmean(h.reshape(h.shape[0], -1), axis=1)

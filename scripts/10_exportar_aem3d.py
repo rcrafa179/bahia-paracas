@@ -221,7 +221,6 @@ def main():
     t_ini = fecha_cwr(pd.DatetimeIndex([m_ini]))[0]
     # Nivel de la marea en las fronteras al inicio: como nivel inicial evita el transitorio de arranque
     h_ini = float(h.mean(axis=1).reindex(h.index.union([m_ini])).interpolate("time").loc[m_ini])
-    dias = (m_fin + pd.Timedelta(hours=1) - m_ini).days
     leeme = f"""Forzamiento de AEM3D para la bahía de Paracas, mes candidato {mes}
 Generado por scripts/10_exportar_aem3d.py. Tiempos en {etiqueta_hora}.
 
@@ -236,8 +235,8 @@ Líneas para run_aem3d.dat (formato de Model/Lagoon/run/run_aem3d.dat):
   {t_ini:<40} start_date_cwr
   ! nivel inicial = marea en la frontera al inicio (evita un transitorio de arranque)
   {h_ini:<40.3f} DEFAULT_HEIGHT
-  {cfg['mareografo']['lat']:<40} latitude
-  iter_max = {dias} días x 86400 / del_t (p. ej. del_t = 30 s -> {dias * 86400 // 30} iteraciones)
+  iter_max = días x 86400 / del_t (p. ej. 14 días con del_t = 30 s -> 40320 iteraciones)
+  (la versión demo de AEM3D permite como máximo 14 días; la latitud la toma de la batimetría)
 
 Revisar antes de correr:
   * Los conjuntos de celdas {', '.join(f'{k} = {v}' for k, v in ae['bc_frontera'].items())} deben existir
