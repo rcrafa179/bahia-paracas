@@ -111,6 +111,8 @@ def listar_remotos(ftp: ftplib.FTP, carpeta: str, buscadas: list[str]) -> dict[s
                          "¿Tu cuenta AVISO tiene acceso a FES? Las carpetas sin suscripción aparecen vacías.")
     if not nombres:
         raise SystemExit(f"La carpeta {carpeta} aparece vacía: tu cuenta aún no tiene acceso a FES2022")
+    # nlst deja la conexión en modo ASCII y AVISO rechaza SIZE en ese modo ("550 SIZE not allowed")
+    ftp.voidcmd("TYPE I")
     encontrados = {}
     for n in sorted(nombres):
         c = constituyente(n)
