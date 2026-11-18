@@ -1,0 +1,32 @@
+# Datos (se regeneran con los scripts o se descargan a mano)
+data/raw/
+data/processed/
+# Figuras regenerables
+figures/
+# Credenciales: nunca al repositorio
+.cdsapirc
+*.cdsapirc
+.env
+*credentials*
+# Archivos grandes de modelos y mallas
+*.nc
+*.nc.xz
+*.grib
+*.zip
+# LaTeX auxiliares
+presentacion/*.aux
+presentacion/*.log
+presentacion/*.nav
+presentacion/*.out
+presentacion/*.snm
+presentacion/*.toc
+presentacion/*.fls
+presentacion/*.fdb_latexmk
+presentacion/*.vrb
+# Python / sistema
+__pycache__/
+*.pyc
+.DS_Store
+.ipynb_checkpoints/
+data/logs/
+.netrc

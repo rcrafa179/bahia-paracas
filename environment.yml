@@ -1,0 +1,26 @@
+# Entorno para reproducir el proyecto en otra máquina:
+#   mamba env create -f environment.yml && conda activate paracas
+# En la máquina original se usa el entorno existente 'taller-rhia' (Python 3.12),
+# al que se le agregaron windrose, utide y pytmd.
+name: paracas
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy
+  - pandas
+  - xarray
+  - netcdf4
+  - h5netcdf
+  - scipy
+  - matplotlib
+  - cartopy
+  - geopandas
+  - shapely
+  - pyproj
+  - pyyaml
+  - requests
+  - cdsapi>=0.7.7
+  - windrose
+  - utide
+  - pytmd>=3.1

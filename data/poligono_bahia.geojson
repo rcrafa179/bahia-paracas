@@ -1,0 +1,29 @@
+{
+  "type": "FeatureCollection",
+  "name": "bahia_paracas",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "nombre": "Bahía de Paracas",
+        "descripcion": "Polígono inicial y editable (lon, lat WGS84). Cierra la bahía en la boca, entre Punta Pejerrey (oeste) y la costa este. Puede extenderse sobre tierra: solo cuentan las celdas con profundidad > 0."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-76.292, -13.800],
+          [-76.305, -13.818],
+          [-76.308, -13.835],
+          [-76.296, -13.846],
+          [-76.280, -13.853],
+          [-76.262, -13.866],
+          [-76.250, -13.852],
+          [-76.248, -13.830],
+          [-76.243, -13.808],
+          [-76.242, -13.790],
+          [-76.292, -13.800]
+        ]]
+      }
+    }
+  ]
+}

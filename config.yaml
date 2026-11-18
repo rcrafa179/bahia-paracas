@@ -1,0 +1,132 @@
+# =====================================================================
+# Configuración del proyecto: bahía de Paracas (Perú)
+# Todas las coordenadas en grados decimales (lat negativa = Sur,
+# lon negativa = Oeste). Todas las fechas en UTC.
+# =====================================================================
+
+proyecto:
+  nombre: "Bahía de Paracas"
+  zona_horaria_local: -5          # horas respecto de UTC (Perú, sin horario de verano)
+
+# --- Dominio de estudio --------------------------------------------------
+dominio:
+  lat_min: -13.95
+  lat_max: -13.60
+  lon_min: -76.50
+  lon_max: -76.15
+
+# Punto representativo de la boca de la bahía (entre Punta Pejerrey y la costa este)
+boca_bahia:
+  lat: -13.80
+  lon: -76.27
+
+# --- Periodo ---------------------------------------------------------------
+periodo:
+  inicio: "2025-01-01"
+  fin: "2026-10-31"               # último mes completo disponible
+
+# --- Meteorología ----------------------------------------------------------
+era5:
+  dataset: "reanalysis-era5-single-levels"
+  margen_grados: 0.5              # margen alrededor del dominio para la descarga
+  variables:                      # nombres largos que usa el CDS
+    - 10m_u_component_of_wind
+    - 10m_v_component_of_wind
+    - 2m_temperature
+    - 2m_dewpoint_temperature
+    - mean_sea_level_pressure
+    - surface_solar_radiation_downwards
+    - surface_thermal_radiation_downwards
+    - total_precipitation
+    - total_cloud_cover
+  carpeta_raw: "data/raw/era5"
+
+metar:
+  estacion: "SPSO"                # Aeropuerto de Pisco (ICAO)
+  lat: -13.7449                   # según el catálogo de IEM
+  lon: -76.2203
+  url: "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
+  carpeta_raw: "data/raw/metar"
+
+vientos_paracas:
+  umbral_ms: 10.0                 # viento mayor que este valor (m/s)
+  hora_local_inicio: 12           # ventana horaria en hora local [inicio, fin]
+  hora_local_fin: 18
+  horas_minimas: 1                # horas sobre el umbral en la ventana para contar un día como evento
+  fuente: "metar"                 # era5 | metar : fuente que define el mes candidato
+  # "auto" = mes con más eventos según la fuente; "AAAA-MM" = mes fijado a mano.
+  # Se fija 2025-01 (10 eventos en SPSO, empatado con 2025-03) porque es el único mes en que el
+  # mareógrafo IOC pasa el control de calidad: permite validar la marea en el mismo mes del forzamiento.
+  mes_candidato: "2025-01"
+
+# --- Marea -----------------------------------------------------------------
+mareografo:
+  nombre: "Pisco"
+  # Posición según IOC Sea Level Monitoring (estación 'pisco').
+  # Valor aproximado del encargo: 13°43'S, 76°13'W (-13.7167, -76.2167).
+  # El metadato de UHSLC (-13.4167, -76.1333) cae en Chincha, fuera del dominio: se ignora.
+  lat: -13.8194
+  lon: -76.2519
+
+ioc:
+  url: "https://www.ioc-sealevelmonitoring.org/service.php"
+  estaciones: ["pisco", "pisc2"]  # la primera es la principal; la segunda llena huecos
+  sensor_preferido:               # sensor a usar en cada estación
+    pisco: "rad"
+    pisc2: "prs"
+  carpeta_raw: "data/raw/ioc"
+
+uhslc:
+  id: 683                         # verificado en https://uhslc.soest.hawaii.edu/data/meta.geojson
+  url_rq: "https://uhslc.soest.hawaii.edu/data/csv/rqds/pacific/hourly/h683b.csv"
+  url_fd: null                    # Pisco no tiene 'fast delivery' en UHSLC (404)
+  valor_faltante: -32767
+  anio_referencia: "auto"         # 'auto' = año más completo (empates -> más reciente) o un año fijo, p. ej. 2022
+  carpeta_raw: "data/raw/uhslc"
+
+analisis_marea:
+  anio_ioc: "auto"                # 'auto' = ventana de 365 días más completa en el periodo, o 'AAAA-MM-DD' de inicio
+  completitud_minima: 0.70        # fracción mínima de horas válidas para hacer el análisis
+  tolerancia_empate: 0.005        # diferencia de completitud considerada empate
+  destacar: ["M2", "S2", "N2", "K1", "O1", "P1"]
+  serie_principal: "auto"         # auto | ioc | uhslc ('auto' = IOC si su ventana supera completitud_minima tras el QC)
+  qc_referencia:                  # compara cada mes del IOC con la marea predicha a partir de UHSLC
+    aplicar: true                 # descarta los meses que fallan
+    r_min: 0.95                   # correlación mínima
+    pendiente_tol: 0.10           # |pendiente obs/pred − 1| máxima (detecta amplitudes atenuadas)
+
+modelo_marea:
+  nombre: "FES2022_extrapolated"  # nombre del modelo en la base de datos de pyTMD
+  directorio: "data/raw/fes2022"  # carpeta que CONTIENE a fes2022b/ (la llena scripts/00_fes2022_download.py)
+  archivos: "fes2022b/ocean_tide_extrapolated/*_fes2022.nc"   # patrón relativo a 'directorio'
+  corte_extrapolacion_km: 10      # distancia máxima para extrapolar hacia la costa
+  constituyentes: ["m2", "s2", "n2", "k2", "k1", "o1", "p1", "q1", "2n2", "m4", "ms4", "mn4", "mf", "mm", "ssa"]
+  paso_minutos: 15
+  # Descarga desde el FTP autenticado de AVISO (credenciales en ~/.netrc, nunca aquí)
+  descarga:
+    host: "ftp-access.aviso.altimetry.fr"
+    carpeta_remota: "auxiliary/tide_model/fes2022b/ocean_tide_extrapolated"
+    timeout_s: 120
+  # Fronteras abiertas del dominio (puntos equiespaciados sobre cada segmento)
+  fronteras:
+    norte: {lat_ini: -13.60, lon_ini: -76.50, lat_fin: -13.60, lon_fin: -76.20, n: 13}
+    oeste: {lat_ini: -13.95, lon_ini: -76.50, lat_fin: -13.60, lon_fin: -76.50, n: 15}
+    # Nota: el borde sur (-13.95) también es mar entre -76.50 y ~-76.28.
+    # Para activarlo, descomentar:
+    # sur: {lat_ini: -13.95, lon_ini: -76.50, lat_fin: -13.95, lon_fin: -76.28, n: 10}
+
+# --- Batimetría --------------------------------------------------------------
+batimetria:
+  gebco_nc: "data/raw/gebco/gebco_paracas.nc"   # recorte descargado del portal GEBCO
+  poligono_bahia: "data/poligono_bahia.geojson"
+  isobatas: [5, 10, 20, 30, 50, 75, 100]       # profundidades (m, positivas)
+  perfiles:
+    boca:          {lat_ini: -13.800, lon_ini: -76.292, lat_fin: -13.790, lon_fin: -76.240, n: 200}
+    eje_bahia:     {lat_ini: -13.790, lon_ini: -76.270, lat_fin: -13.858, lon_fin: -76.265, n: 200}
+    boca_exterior: {lat_ini: -13.790, lon_ini: -76.380, lat_fin: -13.760, lon_fin: -76.230, n: 200}
+
+# --- Salidas -------------------------------------------------------------------
+salidas:
+  dpi: 300
+  carpeta_figuras: "figures"
+  carpeta_procesados: "data/processed"
