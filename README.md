@@ -205,7 +205,20 @@ salinidad ni calor (con `idensity = 0`, AEM3D exige `iclosure = 0`). Resultado:
 - en la celda del mareógrafo, AEM3D reproduce la marea de FES2022 con 1 cm de diferencia como máximo,
   pasadas las 3 h de arranque.
 
-Escalado de esa prueba, un mes barotrópico tardaría unas 3 h en un núcleo; `aem3d_openmp` lo acorta.
+**Ejecución en paralelo:** el caso usa `aem3d_openmp` con `nthreads = 5` (`malla_aem3d.programa` y
+`malla_aem3d.hilos`). El M3 Pro tiene 5 núcleos de rendimiento y 6 de eficiencia. Con la prueba de 6 h
+se midió:
+
+| Hilos | Tiempo |
+|---|---|
+| 1 | 91 s |
+| 5 | 33–45 s |
+| 10–11 | 42–47 s |
+
+Usar más de 5 hilos no acelera, porque los núcleos lentos frenan a los demás. El resultado con 5 hilos
+coincide con el de 1 hilo: el nivel difiere como mucho 0,03 mm. Para correr el mes completo en modo
+barotrópico, poner `malla_aem3d.prueba.horas: 744`: tardaría ~1–1,5 h (un núcleo: ~3 h). Para correrlo a
+mano: `cd data/processed/aem3d/caso_paracas/run && aem3d_openmp`.
 
 Falta para la corrida completa del mes: activar temperatura, salinidad, densidad y calor (`iheat_input`,
 `itemperature`, `isalinity`, `idensity` = 1, `iclosure` = 6). Para eso se necesitan perfiles iniciales

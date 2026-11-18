@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import time
 
 import numpy as np
 import pandas as pd
@@ -221,7 +222,7 @@ def escribir_run_pre(destino, bati, bc):
     destino.write_text("\n".join(L) + "\n", encoding="ascii")
 
 
-def escribir_run_aem3d(destino, cfg, met, mar, inicio, del_t, iteraciones, h_ini):
+def escribir_run_aem3d(destino, cfg, met, mar, inicio, del_t, iteraciones, h_ini, hilos=1):
     """run_aem3d.dat de PRUEBA, con las palabras clave del ejemplo Lagoon (misma versión de AEM3D).
 
     Barotrópica: sin temperatura, salinidad ni calor (no hay perfiles iniciales medidos de la bahía).
@@ -269,6 +270,7 @@ def escribir_run_aem3d(destino, cfg, met, mar, inicio, del_t, iteraciones, h_ini
          (0, "start_output_monitor"), (0, "start_output_save"), (120, "iter_out_monitor"),
          (0, "iter_out_txtfiles"), (iteraciones, "iter_out_save"), (iteraciones, "iter_out_restart"),
          ("save", "restart_save_file"), ("restart_final", "restart_out_file"),
+         ("!", "Multi-thread support (solo aem3d_openmp; manual, sec. 3.5.7)"), (hilos, "nthreads"),
          ("!", "Debugging controls"),
          (0, "iquiet"), (1, "debug_check"), (0, "debug_print"), (0, "debug_print_start"), (0, "debug_point"),
          (0, "debug_timestep_file"), (10, "debug_timestep_reset"), (1, "debug_baroclinic_x"),
@@ -394,7 +396,8 @@ def main():
     h_ini = float(next(l.split()[0] for l in texto.splitlines() if l.strip().endswith("DEFAULT_HEIGHT")))
     pr = ma["prueba"]
     iteraciones = int(pr["horas"] * 3600 / pr["del_t_s"])
-    escribir_run_aem3d(caso / "run" / "run_aem3d.dat", cfg, met, mar, inicio, pr["del_t_s"], iteraciones, h_ini)
+    escribir_run_aem3d(caso / "run" / "run_aem3d.dat", cfg, met, mar, inicio, pr["del_t_s"], iteraciones, h_ini,
+                       int(ma.get("hilos", 1)))
     (caso / "run" / "infiles" / "datablock.xml").write_text(
         DATABLOCK.format(intervalo=int(3600 / pr["del_t_s"])), encoding="ascii")
     log.info(f"Caso escrito en {relativa(caso)} (prueba: {pr['horas']} h con del_t = {pr['del_t_s']} s)")
@@ -404,23 +407,28 @@ def main():
                "columnas_agua": int(agua.sum()), "capas": len(dz), "prof_max_m": round(prof_max, 1),
                "celdas_abiertas": n_abiertas}
     if args.correr:
-        resumen.update(correr(caso, pr, cfg))
+        resumen.update(correr(caso, pr, cfg, ma.get("programa", "aem3d")))
     with open(carpeta(cfg, "carpeta_procesados") / "malla_aem3d_resumen.yaml", "w", encoding="utf-8") as f:
         yaml.safe_dump(resumen, f, allow_unicode=True, sort_keys=False)
 
 
-def correr(caso, pr, cfg) -> dict:
+def correr(caso, pr, cfg, programa: str) -> dict:
     """pre_aem3d y la corrida de prueba; revisa que termine y que el nivel siga la marea."""
-    for prog, cwd in (("pre_aem3d", caso / "pre"), ("aem3d", caso / "run")):
+    if programa not in ("aem3d", "aem3d_openmp"):
+        raise SystemExit("malla_aem3d.programa debe ser 'aem3d' o 'aem3d_openmp'")
+    t_ini = None
+    for prog, cwd in (("pre_aem3d", caso / "pre"), (programa, caso / "run")):
+        if prog == programa:
+            t_ini = time.time()
         exe = shutil.which(prog) or str(RAIZ.parent / "bin" / prog)
         log.info(f"Ejecutando {prog} en {relativa(cwd)}")
         r = subprocess.run([exe], cwd=cwd, capture_output=True, text=True)
         (cwd / f"salida_{prog}.txt").write_text(r.stdout + r.stderr, encoding="utf-8")
         fin = (r.stdout + r.stderr).strip().splitlines()[-6:]
-        if r.returncode != 0 or (prog == "aem3d" and "FINISHED" not in r.stdout):
+        if r.returncode != 0 or (prog == programa and "FINISHED" not in r.stdout):
             raise SystemExit(f"{prog} falló (código {r.returncode}); ver {relativa(cwd)}/salida_{prog}.txt:\n"
                              + "\n".join(fin))
-        log.info(f"{prog} terminó bien")
+        log.info(f"{prog} terminó bien" + (f" en {time.time() - t_ini:.0f} s" if prog == programa else ""))
     ds = xr.open_dataset(caso / "run" / "ncfiles" / "sheet_top.nc", decode_times=False)
     h = ds.HEIGHT.values
     h = np.where(np.abs(h) > 1e3, np.nan, h)
@@ -457,7 +465,7 @@ def correr(caso, pr, cfg) -> dict:
         log.info("[sanidad] AEM3D reproduce la marea de FES2022 en el mareógrafo (< 5 cm) -> OK")
     else:
         log.warning("[sanidad] AEM3D se aleja de FES2022 en el mareógrafo más de 5 cm: revisar fronteras")
-    return {"prueba_horas": pr["horas"], "nivel_medio_m": [round(float(x), 3) for x in serie],
+    return {"programa": programa, "segundos": round(time.time() - t_ini), "prueba_horas": pr["horas"], "nivel_medio_m": [round(float(x), 3) for x in serie],
             "vel_max_superficie_ms": round(vmax, 3),
             "dif_max_mareografo_cm": round(100 * dmax, 1) if np.isfinite(dmax) else None}
 

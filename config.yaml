@@ -176,6 +176,10 @@ malla_aem3d:
     factor: 1.15                  # luego cada capa es este factor más gruesa
     dz_max_m: 12.0                # espesor máximo de una capa
     margen_superior_m: 1.5        # altura de la malla sobre el nivel medio (marea alta + margen)
+  # Ejecución. M3 Pro: 5 núcleos de rendimiento + 6 de eficiencia. Medido el 2026-11-18 con la prueba
+  # de 6 h: 1 hilo 91 s; 5 hilos 33–45 s; 10–11 hilos 42–47 s (los núcleos lentos frenan a los demás).
+  programa: "aem3d_openmp"        # aem3d (un núcleo) | aem3d_openmp (paralelo)
+  hilos: 5                        # nthreads de run_aem3d.dat (solo lo usa aem3d_openmp)
   prueba:                         # corrida corta de verificación (barotrópica: solo marea y viento)
     del_t_s: 30
     horas: 6
