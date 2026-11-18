@@ -62,7 +62,7 @@ y `--forzar` (repetir descargas).
 |---|---|---|
 | **Credenciales del CDS** | https://cds.climate.copernicus.eu → perfil → *API token* | Archivo `~/.cdsapirc` con `url: https://cds.climate.copernicus.eu/api` y `key: <token>`. **Nunca** dentro del repositorio. Requiere `cdsapi >= 0.7.7`. |
 | **Licencia de ERA5** | Página del dataset *ERA5 hourly data on single levels*, pestaña *Download*, al final | Hay que aceptarla una vez; si no, el CDS rechaza la petición. |
-| **FES2022b** (marea global) | Registro gratuito en AVISO+: https://www.aviso.altimetry.fr/en/data/data-access/registration-form.html (pedir acceso a *FES – Oceanic Tides Heights*) | Con la cuenta habilitada, crear `~/.netrc` (fuera del repositorio) con la línea `machine ftp-access.aviso.altimetry.fr login TU_CORREO password TU_CONTRASEÑA` y hacer `chmod 600 ~/.netrc`. Luego `00_fes2022_download.py` baja **solo** las 15 constituyentes de `modelo_marea.constituyentes` (de 34) de `fes2022b/ocean_tide_extrapolated/` y las descomprime (`.xz`) en `data/raw/fes2022/`. Ocupa varios GB; el script revisa antes el espacio libre. |
+| **FES2022b** (marea global) | Registro gratuito en AVISO+: https://www.aviso.altimetry.fr/en/data/data-access/registration-form.html (pedir acceso a *FES – Oceanic Tides Heights*) | Con la cuenta habilitada, crear `~/.netrc` (fuera del repositorio) con la línea `machine ftp-access.aviso.altimetry.fr login TU_CORREO password TU_CONTRASEÑA` y hacer `chmod 600 ~/.netrc`. Luego `00_fes2022_download.py` baja **solo** las 15 constituyentes de `modelo_marea.constituyentes` (de 34) de `fes2022b/ocean_tide_extrapolated/` y las descomprime (`.xz`) en `data/raw/fes2022/`. El FTP es lento (~15 min por archivo) y a veces corta: el script reconecta y reanuda desde el último byte (`modelo_marea.descarga.reintentos`), y si se interrumpe basta volver a correrlo. Ocupa varios GB; el script revisa antes el espacio libre. |
 | **GEBCO** (batimetría) | https://download.gebco.net | Usar la herramienta de **recorte** (no la malla global de ~7,5 GB): caja 13.55–14.00°S, 76.10–76.55°W, formato *2D netCDF*. Guardar como `data/raw/gebco/gebco_paracas.nc` (o cambiar `batimetria.gebco_nc`). |
 | Sondajes DHN (opcional) | Carta náutica de la DHN, digitalizada a mano | CSV con columnas `lon, lat, prof` (prof en m, positiva). Se fusiona con `08_bathymetry_gebco.py --sondajes archivo.csv`. |
 
@@ -82,7 +82,7 @@ python scripts/04_meteo_validation.py       # ERA5 vs SPSO (y mes candidato si f
 
 # --- Marea ---
 python scripts/00_fes2022_download.py --listar   # comprueba la cuenta AVISO y muestra tamaños
-python scripts/00_fes2022_download.py            # baja FES2022b (15 constituyentes); omite las ya bajadas
+python scripts/00_fes2022_download.py            # baja FES2022b (15 constituyentes); omite las ya bajadas y reanuda cortes
 python scripts/05_tide_gauge_download.py    # IOC (2025–26) + UHSLC (referencia), QC y selección
 python scripts/06_tide_harmonic_analysis.py # UTide: constituyentes, F, rangos, residuo
 python scripts/07_tide_model_pytmd.py       # FES2022: armónicos, fronteras y serie de 15 min (necesita FES2022b)

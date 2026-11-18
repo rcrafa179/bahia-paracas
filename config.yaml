@@ -107,6 +107,9 @@ modelo_marea:
     host: "ftp-access.aviso.altimetry.fr"
     carpeta_remota: "auxiliary/tide_model/fes2022b/ocean_tide_extrapolated"
     timeout_s: 120
+    # Si la conexión se corta, se reconecta y se reanuda desde el último byte recibido
+    reintentos: 8
+    espera_reintento_s: 20
   # Fronteras abiertas del dominio (puntos equiespaciados sobre cada segmento)
   fronteras:
     norte: {lat_ini: -13.60, lon_ini: -76.50, lat_fin: -13.60, lon_fin: -76.20, n: 13}

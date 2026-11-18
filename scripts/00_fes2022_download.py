@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 """00 - Descarga de FES2022b (elevaciones extrapoladas) desde el FTP de AVISO.
 
-Baja SOLO las constituyentes de modelo_marea.constituyentes (config.yaml), no las 34,
-y descomprime cada archivo .xz al vuelo (no queda el comprimido en disco).
+Baja SOLO las constituyentes de modelo_marea.constituyentes (config.yaml), no las 34.
+Cada .xz se baja a <archivo>.nc.xz.part; si la conexión se corta (el FTP de AVISO es lento,
+~15 min por archivo) se reconecta y se REANUDA desde el último byte recibido (comando REST).
+Al completarse se descomprime a .nc y se borra el comprimido. Volver a correr el script
+también reanuda: los .part que queden se aprovechan.
 
 Requisitos (una sola vez):
   1. Cuenta en AVISO+ con acceso a "FES (Finite Element Solution - Oceanic Tides Heights)":
@@ -18,7 +21,7 @@ Salida: <modelo_marea.directorio>/fes2022b/ocean_tide_extrapolated/<constituyent
 
 Uso:
     python scripts/00_fes2022_download.py --listar     # solo lista archivos y tamaños
-    python scripts/00_fes2022_download.py              # descarga lo que falte
+    python scripts/00_fes2022_download.py              # descarga lo que falte (reanuda cortes)
     python scripts/00_fes2022_download.py --forzar     # vuelve a bajar todo
 """
 from __future__ import annotations
@@ -36,6 +39,9 @@ from utils.log import obtener_logger
 
 log = obtener_logger("00_fes2022_download")
 MB = 1024 ** 2
+
+# Errores de red tras los que vale la pena reconectar y reanudar
+ERRORES_RED = (OSError, EOFError, ftplib.error_temp, ftplib.error_reply)
 
 
 def credenciales(host: str) -> tuple[str, str]:
@@ -57,6 +63,40 @@ def credenciales(host: str) -> tuple[str, str]:
     return usuario, clave
 
 
+class Sesion:
+    """Conexión FTP que se rehace cuando se cae (un corte a mitad de archivo la deja inservible)."""
+
+    def __init__(self, host: str, usuario: str, clave: str, timeout: float):
+        self.host, self.usuario, self.clave, self.timeout = host, usuario, clave, timeout
+        self._ftp: ftplib.FTP | None = None
+
+    @property
+    def ftp(self) -> ftplib.FTP:
+        if self._ftp is None:
+            ftp = ftplib.FTP(self.host, timeout=self.timeout)
+            try:
+                ftp.login(self.usuario, self.clave)
+            except ftplib.error_perm as e:
+                ftp.close()
+                raise SystemExit(f"AVISO rechazó el inicio de sesión: {e}")
+            ftp.voidcmd("TYPE I")  # modo binario, necesario para SIZE y REST
+            self._ftp = ftp
+        return self._ftp
+
+    def cerrar(self, cortada: bool = False):
+        """Cierra la conexión; si se cayó, sin esperar respuesta del servidor."""
+        if self._ftp is None:
+            return
+        try:
+            if cortada:
+                self._ftp.close()
+            else:
+                self._ftp.quit()
+        except Exception:
+            self._ftp.close()
+        self._ftp = None
+
+
 def constituyente(nombre: str) -> str:
     """'m2_fes2022.nc.xz' -> 'm2'."""
     return nombre.split("_", 1)[0].lower()
@@ -71,7 +111,6 @@ def listar_remotos(ftp: ftplib.FTP, carpeta: str, buscadas: list[str]) -> dict[s
                          "¿Tu cuenta AVISO tiene acceso a FES? Las carpetas sin suscripción aparecen vacías.")
     if not nombres:
         raise SystemExit(f"La carpeta {carpeta} aparece vacía: tu cuenta aún no tiene acceso a FES2022")
-    ftp.voidcmd("TYPE I")  # modo binario, necesario para SIZE
     encontrados = {}
     for n in sorted(nombres):
         c = constituyente(n)
@@ -84,36 +123,75 @@ def listar_remotos(ftp: ftplib.FTP, carpeta: str, buscadas: list[str]) -> dict[s
     return encontrados
 
 
-def descargar(ftp: ftplib.FTP, remoto: str, destino: Path, tam: int):
-    """Baja un archivo y, si es .xz, lo descomprime mientras llega. Escribe en .part y renombra al final."""
+def bajar_reanudable(sesion: Sesion, remoto: str, parcial: Path, tam: int,
+                     reintentos: int, espera: float) -> bool:
+    """Baja `remoto` en `parcial`, continuando desde lo que ya haya en disco.
+
+    Devuelve True si el archivo quedó completo (tamaño == tam), False si se agotaron los reintentos."""
+    fallos = 0
+    while True:
+        hecho = parcial.stat().st_size if parcial.exists() else 0
+        if tam and hecho == tam:
+            return True
+        if tam and hecho > tam:  # sobrante raro: se empieza de nuevo
+            log.warning(f"    {parcial.name} es más grande que el remoto; se reinicia")
+            parcial.unlink()
+            hecho = 0
+        if fallos > reintentos:
+            return False
+        if hecho:
+            log.info(f"    reanudando desde {hecho / MB:.1f} MB de {tam / MB:.1f} MB")
+
+        recibido = hecho
+        ultimo = t0 = time.time()
+        try:
+            with open(parcial, "ab") as f:
+                def bloque(datos: bytes):
+                    nonlocal recibido, ultimo
+                    f.write(datos)
+                    recibido += len(datos)
+                    if time.time() - ultimo > 15:  # avance cada 15 s
+                        pct = 100 * recibido / tam if tam else float("nan")
+                        vel = (recibido - hecho) / MB / max(time.time() - t0, 1e-3)
+                        log.info(f"    {recibido / MB:7.1f} / {tam / MB:.1f} MB ({pct:.0f} %, {vel:.2f} MB/s)")
+                        ultimo = time.time()
+
+                sesion.ftp.retrbinary(f"RETR {remoto}", bloque, blocksize=1024 * 1024, rest=hecho or None)
+            if tam and recibido < tam:  # el servidor cerró antes de tiempo sin avisar error
+                raise EOFError(f"llegaron {recibido} de {tam} bytes")
+        except ftplib.error_perm as e:
+            # Respuesta 5xx: si fue por REST (servidor sin reanudación) se baja completo, una sola vez
+            sesion.cerrar(cortada=True)
+            if hecho and fallos == 0:
+                log.warning(f"    el servidor no aceptó reanudar ({e}); se baja completo")
+                parcial.unlink(missing_ok=True)
+                fallos += 1
+                continue
+            raise SystemExit(f"{remoto}: el servidor rechazó la descarga: {e}")
+        except ERRORES_RED as e:
+            fallos += 1
+            sesion.cerrar(cortada=True)
+            if fallos > reintentos:
+                log.warning(f"    corte de conexión ({type(e).__name__}: {e}); sin reintentos restantes")
+                continue
+            log.warning(f"    corte de conexión ({type(e).__name__}: {e}); "
+                        f"intento {fallos}/{reintentos}, reconecto en {espera:.0f} s")
+            time.sleep(espera)
+
+
+def descomprimir(comprimido: Path, destino: Path):
+    """Descomprime un .xz a `destino` (vía .part) y borra el comprimido."""
     parcial = destino.with_suffix(destino.suffix + ".part")
-    descompresor = lzma.LZMADecompressor() if remoto.endswith(".xz") else None
-    recibido = 0
-    ultimo = time.time()
-    t0 = ultimo
-
-    with open(parcial, "wb") as f:
-        def bloque(datos: bytes):
-            nonlocal recibido, ultimo
-            recibido += len(datos)
-            f.write(descompresor.decompress(datos) if descompresor else datos)
-            if time.time() - ultimo > 15:  # avance cada 15 s
-                pct = 100 * recibido / tam if tam else float("nan")
-                log.info(f"    {recibido / MB:7.1f} / {tam / MB:.1f} MB ({pct:.0f} %)")
-                ultimo = time.time()
-
-        ftp.retrbinary(f"RETR {remoto}", bloque, blocksize=1024 * 1024)
-
-    if descompresor is not None and not descompresor.eof:
+    descompresor = lzma.LZMADecompressor()
+    with open(comprimido, "rb") as fi, open(parcial, "wb") as fo:
+        while bloque := fi.read(8 * MB):
+            fo.write(descompresor.decompress(bloque))
+    if not descompresor.eof:
         parcial.unlink(missing_ok=True)
-        raise RuntimeError(f"{remoto}: el archivo .xz llegó incompleto")
-    if tam and recibido != tam:
-        parcial.unlink(missing_ok=True)
-        raise RuntimeError(f"{remoto}: se recibieron {recibido} bytes de {tam}")
+        comprimido.unlink(missing_ok=True)
+        raise RuntimeError(f"{comprimido.name}: el .xz está incompleto o dañado; se borró, vuelve a correr el script")
     parcial.rename(destino)
-    seg = max(time.time() - t0, 1e-3)
-    log.info(f"    listo: {destino.name} ({destino.stat().st_size / MB:.0f} MB en disco, "
-             f"{recibido / MB / seg:.1f} MB/s)")
+    comprimido.unlink()
 
 
 def verificar(archivo: Path):
@@ -138,18 +216,16 @@ def main():
     base = ruta(mm["directorio"])
     destino = base / Path(mm["archivos"]).parent  # .../fes2022b/ocean_tide_extrapolated
     usuario, clave = credenciales(dsc["host"])
+    reintentos, espera = dsc.get("reintentos", 8), dsc.get("espera_reintento_s", 20)
 
     log.info(f"Conectando a {dsc['host']} como {usuario}")
+    sesion = Sesion(dsc["host"], usuario, clave, dsc.get("timeout_s", 120))
+    fallidos = []
     try:
-        ftp = ftplib.FTP(dsc["host"], timeout=dsc.get("timeout_s", 120))
-        ftp.login(usuario, clave)
-    except ftplib.error_perm as e:
-        raise SystemExit(f"AVISO rechazó el inicio de sesión: {e}")
-    except OSError as e:
-        raise SystemExit(f"No se pudo conectar a {dsc['host']}: {e}")
-
-    try:
-        remotos = listar_remotos(ftp, dsc["carpeta_remota"], buscadas)
+        try:
+            remotos = listar_remotos(sesion.ftp, dsc["carpeta_remota"], buscadas)
+        except ERRORES_RED as e:
+            raise SystemExit(f"No se pudo conectar a {dsc['host']}: {e}")
         total = sum(t for _, t in remotos.values())
         for c, (n, t) in remotos.items():
             log.info(f"  {c:>4}: {n} ({t / MB:.0f} MB comprimido)")
@@ -168,22 +244,39 @@ def main():
 
         for i, (c, (n, t)) in enumerate(remotos.items(), 1):
             local = destino / n.removesuffix(".xz")
-            if local.exists() and not args.forzar:
+            parcial = destino / (n + ".part")
+            if args.forzar:
+                local.unlink(missing_ok=True)
+                parcial.unlink(missing_ok=True)
+            if local.exists():
                 log.info(f"[{i}/{len(remotos)}] {local.name} ya existe, se omite")
                 continue
+            # Restos de la versión anterior (descompresión al vuelo): no sirven para reanudar
+            local.with_suffix(local.suffix + ".part").unlink(missing_ok=True)
             log.info(f"[{i}/{len(remotos)}] Bajando {n} ({t / MB:.0f} MB)")
-            descargar(ftp, posixpath.join(dsc["carpeta_remota"], n), local, t)
+            t0 = time.time()
+            if not bajar_reanudable(sesion, posixpath.join(dsc["carpeta_remota"], n), parcial, t,
+                                    reintentos, espera):
+                log.error(f"    {n}: se agotaron los {reintentos} reintentos; queda {parcial.name} para reanudar")
+                fallidos.append(n)
+                continue
+            if n.endswith(".xz"):
+                descomprimir(parcial, local)
+            else:
+                parcial.rename(local)
+            log.info(f"    listo: {local.name} ({local.stat().st_size / MB:.0f} MB en disco, "
+                     f"{(time.time() - t0) / 60:.1f} min)")
             verificar(local)
     finally:
-        try:
-            ftp.quit()
-        except Exception:
-            ftp.close()
+        sesion.cerrar()
 
     archivos = sorted(destino.glob("*_fes2022.nc"))
     tam = sum(a.stat().st_size for a in archivos)
-    log.info(f"FES2022b listo: {len(archivos)} archivos, {tam / 1024 ** 3:.2f} GiB en "
+    log.info(f"FES2022b en disco: {len(archivos)} archivos, {tam / 1024 ** 3:.2f} GiB en "
              f"{destino.relative_to(RAIZ) if destino.is_relative_to(RAIZ) else destino}")
+    if fallidos:
+        raise SystemExit(f"No se completaron {len(fallidos)} archivos: {fallidos}. "
+                         "Vuelve a correr el script: reanuda donde quedó.")
     log.info("Siguiente paso: python scripts/07_tide_model_pytmd.py "
              "(después se pueden borrar los globales: 07 guarda un recorte regional)")
 
