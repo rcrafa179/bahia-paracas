@@ -270,13 +270,13 @@
     \column{0.55\textwidth}
       \figura{marea_prediccion_mes_candidato}{width=\linewidth}
     \column{0.43\textwidth}
-      \small
+      \footnotesize
       \begin{itemize}
-        \item Mes candidato: \textbf{\mesCandidato} (definido con \fuenteCandidato).
-        \item Marea de FES2022 cada 15~min en las fronteras norte y oeste (CSV).
-        \item Validación con el IOC de enero 2025: RMSE \rmseCandSin~cm; corregido $\times$\factorCandidato{} (error de escala, factor del QC): \rmseCandCorr~cm.
-        \item Meteorología horaria de ERA5 en la boca; viento de \metodoViento{} (CSV).
-        \item \textbf{No se corrió AEM3D}: el formato de entrada se definirá con la plantilla del curso.
+        \item Mes: \textbf{\mesCandidato} (definido con \fuenteCandidato).
+        \item Marea FES2022 cada 15~min en las fronteras norte y oeste. Validación con IOC: RMSE \rmseCandSin~cm; corregido $\times$\factorCandidato: \rmseCandCorr~cm.
+        \item Meteorología ERA5 horaria; viento de \metodoViento.
+        \item Formato AEM3D (\texttt{10\_exportar\_aem3d.py}), probado en el ejemplo Lagoon: AEM3D lo lee y sigue la marea.
+        \item \textbf{No se corrió Paracas}: falta la malla del preprocesador.
       \end{itemize}
   \end{columns}
 \end{frame}
@@ -314,7 +314,7 @@
     \item El registro de Pisco tiene un error de escala ($\times$\razonError) entre 2016 y enero de 2025, detectado con Callao, San Juan y FES2022; se analizó el IOC \ventanaPrincipal{} con referencia UHSLC \anioUhslc.
     \item FES2022 reproduce la marea de Pisco ($\Delta A_{M_2}$ = \dAmMdosFes~cm, $\Delta g_{M_2}$ = \dgMdosFes$^\circ$): el forzamiento de frontera es confiable.
     \item ERA5 corregido por cuantiles iguala la intensidad pero no la cronología de los eventos: el forzamiento usa el viento de SPSO (estación en tierra: sobre el agua puede ser algo mayor).
-    \item Pendiente: batimetría de detalle (carta DHN) y exportación al formato de AEM3D.
+    \item Pendiente: batimetría de detalle (carta DHN) y malla de AEM3D para correr la simulación.
   \end{itemize}
 \end{frame}
 

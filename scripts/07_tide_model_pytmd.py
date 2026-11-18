@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 """07 - Marea del modelo global FES2022 con pyTMD: armónicos y forzamiento de frontera.
 
-Los archivos de FES2022b se descargan a mano desde AVISO (requiere registro) y su
-carpeta se indica en config.yaml (modelo_marea.directorio). Basta con las elevaciones
+Los archivos de FES2022b los baja scripts/00_fes2022_download.py desde AVISO (requiere
+registro) y su carpeta se indica en config.yaml (modelo_marea.directorio). Basta con las elevaciones
 (ocean_tide_extrapolated, recomendado cerca de la costa) y solo las constituyentes que
 se quieran usar: el script toma las que encuentre.
 
 Hace:
   1. Armónicos de FES2022 en el mareógrafo y comparación con UTide (IOC y UHSLC).
   2. Armónicos en puntos de las fronteras abiertas (norte y oeste, configurable).
-  3. Serie de nivel predicha cada 15 min para el mes candidato (CSV), en el mareógrafo
-     y en cada punto de frontera, y comparación con lo observado si hay datos.
-  4. exportar_aem3d(): función vacía y documentada para adaptar al formato del curso.
+  3. Serie de nivel predicha cada 15 min para el mes candidato (más aem3d.margen_horas a cada
+     lado), en el mareógrafo y en cada punto de frontera (CSV), y validación con el IOC.
+El archivo de entrada de AEM3D lo escribe scripts/10_exportar_aem3d.py.
 
 Uso:
     python scripts/07_tide_model_pytmd.py
@@ -129,31 +129,6 @@ def puntos_frontera(cfg) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Exportación a AEM3D (pendiente de plantilla)
 # ---------------------------------------------------------------------------
-def exportar_aem3d(serie_frontera: pd.DataFrame, puntos: pd.DataFrame, destino):
-    """Exporta el nivel de frontera al formato de entrada de AEM3D. **PENDIENTE.**
-
-    No se implementa todavía para no inventar el formato: se completará cuando se
-    tenga la plantilla del curso.
-
-    Parámetros
-    ----------
-    serie_frontera : DataFrame
-        Índice 'tiempo_utc' cada 15 min; una columna por punto de frontera
-        (nivel en m respecto del nivel medio), p. ej. 'norte_01', 'oeste_05'.
-        Se guarda también en data/processed/marea_frontera_mes_candidato.csv.
-    puntos : DataFrame
-        Columnas punto, frontera, lat, lon de cada punto de frontera.
-    destino : Path
-        Carpeta donde escribir los archivos de AEM3D.
-
-    Al adaptarla, revisar: formato de tiempo que espera AEM3D (p. ej. día juliano o
-    fecha decimal), si el tiempo debe ir en UTC u hora local, unidades (m), el
-    identificador de cada frontera abierta en la malla y el encabezado del archivo.
-    """
-    log.info("exportar_aem3d(): pendiente de la plantilla del curso; no se escribió ningún archivo de AEM3D")
-    return None
-
-
 # ---------------------------------------------------------------------------
 def main():
     args = parser_base("Armónicos y forzamiento de marea con FES2022 (pyTMD)").parse_args()
@@ -211,7 +186,10 @@ def main():
     # 3) Serie predicha para el mes candidato
     with open(procdir / "mes_candidato.yaml", encoding="utf-8") as f:
         cand = yaml.safe_load(f)
-    tiempos = pd.date_range(cand["inicio_utc"], pd.Timestamp(cand["fin_utc"]).floor("D") + pd.Timedelta(days=1),
+    # Margen a cada lado del mes (aem3d.margen_horas) para cubrir el mes completo en hora local
+    margen = pd.Timedelta(hours=cfg.get("aem3d", {}).get("margen_horas", 0))
+    tiempos = pd.date_range(pd.Timestamp(cand["inicio_utc"]) - margen,
+                            pd.Timestamp(cand["fin_utc"]).floor("D") + pd.Timedelta(days=1) + margen,
                             freq=f"{mm['paso_minutos']}min", inclusive="left")
     h_mg = predecir(m, loc_mg, tiempos)[:, 0]
     h_fr = predecir(m, loc_fr, tiempos)
@@ -229,7 +207,7 @@ def main():
     log.info("Guardado: data/processed/marea_frontera_mes_candidato.csv (nivel respecto del nivel medio, m)")
     fig_serie_candidato(serie, cand, cfg, procdir, figdir)
 
-    exportar_aem3d(serie.drop(columns="mareografo"), pts, procdir / "aem3d")
+    log.info("Siguiente paso para AEM3D: python scripts/10_exportar_aem3d.py")
     log.info("Modelo de marea terminado")
 
 

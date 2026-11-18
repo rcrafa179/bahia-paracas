@@ -136,7 +136,12 @@ def forzamiento(cand, boca, obs, comp, cfg, procdir, figdir):
     """Forzamiento meteorológico del mes candidato: ERA5 de la boca con el viento de forzamiento_viento."""
     metodo = cfg["forzamiento_viento"]["metodo"]
     viento = viento_forzamiento(boca, obs, cfg)
-    sel = boca.loc[cand["inicio_utc"]:cand["fin_utc"]].copy()
+    # Margen a cada lado del mes (p. ej. para cubrir el mes completo en hora local en AEM3D)
+    margen = pd.Timedelta(hours=cfg.get("aem3d", {}).get("margen_horas", 0))
+    t0, t1 = pd.Timestamp(cand["inicio_utc"]), pd.Timestamp(cand["fin_utc"])
+    sel = boca.loc[t0 - margen:t1 + margen].copy()
+    if sel.index[0] > t0 - margen or sel.index[-1] < t1 + margen:
+        log.info(f"Margen del forzamiento recortado a los datos disponibles: {sel.index[0]} a {sel.index[-1]}")
     v = viento.loc[sel.index]
     for c in ["u10_ms", "v10_ms", "vel_ms", "dir_grados"]:
         sel[c] = v[c]
@@ -144,25 +149,28 @@ def forzamiento(cand, boca, obs, comp, cfg, procdir, figdir):
         sel[c] = v[c]
     sel.round(3).to_csv(procdir / "forzamiento_meteo_mes_candidato.csv")
     n_obs = int((v.fuente_vel == "spso").sum())
-    _, men_f = eventos_paracas(v.vel_ms, cfg)
+    _, men_f = eventos_paracas(v.vel_ms.loc[t0:t1], cfg)  # eventos solo dentro del mes
     ev_f = int(men_f.eventos.sum())
-    resumen = {"metodo": metodo, "mes": cand["mes"], "horas": len(v), "horas_spso": n_obs,
-               "horas_rellenas": len(v) - n_obs, "direcciones_era5": int((v.fuente_dir != "spso").sum()),
+    vm = v.loc[t0:t1]
+    n_obs = int((vm.fuente_vel == "spso").sum())
+    resumen = {"metodo": metodo, "mes": cand["mes"], "horas": len(vm), "horas_spso": n_obs,
+               "horas_rellenas": len(vm) - n_obs, "direcciones_era5": int((vm.fuente_dir != "spso").sum()),
                "eventos_forzamiento": ev_f, "eventos_metar": int(cand.get("eventos", -1)),
                "eventos_era5_qm_cv_mes": int(comp.loc[cand["mes"], "eventos_era5_qm_cv"])
                if cand["mes"] in comp.index else None,
                "eventos_metar_total": int(comp.eventos_metar.sum()),
                "eventos_era5_qm_cv_total": int(comp.eventos_era5_qm_cv.sum()),
-               "vel_media_ms": round(float(v.vel_ms.mean()), 2), "vel_max_ms": round(float(v.vel_ms.max()), 2)}
+               "vel_media_ms": round(float(vm.vel_ms.mean()), 2), "vel_max_ms": round(float(vm.vel_ms.max()), 2),
+               "inicio_csv_utc": str(sel.index[0]), "fin_csv_utc": str(sel.index[-1])}
     with open(procdir / "viento_forzamiento_resumen.yaml", "w", encoding="utf-8") as f:
         yaml.safe_dump(resumen, f, allow_unicode=True, sort_keys=False)
     log.info(f"Forzamiento meteorológico {cand['mes']}: {len(sel)} horas -> forzamiento_meteo_mes_candidato.csv; "
-             f"viento '{metodo}': {n_obs} h de SPSO, {len(v) - n_obs} h rellenas con ERA5 corregido, "
+             f"viento '{metodo}' en el mes: {n_obs} h de SPSO, {len(vm) - n_obs} h rellenas con ERA5 corregido, "
              f"{resumen['direcciones_era5']} direcciones de ERA5; {ev_f} días con evento")
     if metodo == "spso":
         log.info("Nota: SPSO es una estación en tierra (aeropuerto); sobre el agua el viento suele ser algo más "
                  "intenso por la menor rugosidad, así que el forzamiento es conservador")
-    fig_forzamiento(viento.loc[sel.index], obs, comp, cand, cfg, figdir)
+    fig_forzamiento(viento.loc[t0:t1], obs, comp, cand, cfg, figdir)
 
 
 def fig_forzamiento(v, obs, comp, cand, cfg, figdir):

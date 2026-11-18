@@ -149,6 +149,22 @@ modelo_marea:
     # Para activarlo, descomentar:
     # sur: {lat_ini: -13.95, lon_ini: -76.50, lat_fin: -13.95, lon_fin: -76.28, n: 10}
 
+# --- Exportación a AEM3D (scripts/10_exportar_aem3d.py) ----------------------------
+# Formato "Version 1" de los archivos de condiciones de contorno temporales, verificado en el manual
+# (~/AEM3D/docs/AEM3D_User.pdf, sec. 3.7.2 y tabla 3.2) y en los ejemplos de ~/AEM3D/Model (Lagoon, test1).
+aem3d:
+  carpeta: "data/processed/aem3d"
+  # Hora de la columna TIME: "local" (UTC-5, convención de la guía del curso en Model/test1) o "utc".
+  # start_date_cwr de run_aem3d.dat debe usar la misma referencia.
+  hora: "local"
+  margen_horas: 24                # 04 y 07 extienden el forzamiento este margen a cada lado del mes
+  # Número de conjunto de celdas de cada frontera abierta, tal como se definan en el bc.dat del
+  # preprocesador (pre_aem3d). 0 está reservado para la superficie (meteorología).
+  bc_frontera: {norte: 1, oeste: 2}
+  # Onda larga: "CLOUDS" (nubosidad de ERA5; 9 columnas, formato de la guía del curso) o
+  # "LW_RAD_IN" (radiación de onda larga incidente de ERA5, medida en vez de estimada).
+  onda_larga: "CLOUDS"
+
 # --- Batimetría --------------------------------------------------------------
 batimetria:
   gebco_nc: "data/raw/gebco/gebco_paracas.nc"   # recorte descargado del portal GEBCO

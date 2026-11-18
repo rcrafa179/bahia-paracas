@@ -28,6 +28,7 @@ paracas/
     │                              07b_control_vecinos.py
     ├── 03_metar_download.py       08_bathymetry_gebco.py
     ├── 04_meteo_validation.py     09_presentacion.py
+    │                              10_exportar_aem3d.py
     ├── 05_tide_gauge_download.py
     └── utils/  (config, logs, gráficos, viento, ERA5, verificaciones de sanidad)
 ```
@@ -94,6 +95,9 @@ python scripts/08_bathymetry_gebco.py       # necesita el recorte de GEBCO
 
 # --- Presentación ---
 python scripts/09_presentacion.py           # escribe las cifras y compila presentacion/paracas.pdf
+
+# --- AEM3D ---
+python scripts/10_exportar_aem3d.py         # archivos de forzamiento de AEM3D (necesita 04 y 07)
 ```
 
 `02` y `04` deben correr antes que `07`, porque `07` usa el mes candidato (`data/processed/mes_candidato.yaml`).
@@ -152,7 +156,9 @@ python scripts/09_presentacion.py           # escribe las cifras y compila prese
 
 ## 6. AEM3D
 
-**No se corre ninguna simulación.** Quedan listos, en CSV y en UTC:
+**No se corre ninguna simulación de Paracas.** El forzamiento queda en dos formas.
+
+En CSV y en UTC (con `aem3d.margen_horas` = 24 h a cada lado del mes):
 - `data/processed/forzamiento_meteo_mes_candidato.csv`: meteorología horaria del mes candidato. El
   viento (`u10_ms`, `v10_ms`, `vel_ms`, `dir_grados`) sale del método de `forzamiento_viento`. Las
   columnas `fuente_vel` y `fuente_dir` indican el origen de cada hora; `vel_era5_ms` y `vel_era5_qm_ms`
@@ -160,8 +166,28 @@ python scripts/09_presentacion.py           # escribe las cifras y compila prese
 - `data/processed/marea_frontera_mes_candidato.csv`: nivel del mar cada 15 min en el mareógrafo y en
   cada punto de frontera abierta.
 
-La función `exportar_aem3d()` de `07_tide_model_pytmd.py` está vacía y documentada a propósito: el
-formato de entrada de AEM3D se implementará cuando haya una plantilla del curso.
+En el formato de entrada de AEM3D, en `data/processed/aem3d/`, escrito por `10_exportar_aem3d.py`:
+- `met_paracas_<mes>.dat`: meteorología horaria para toda la superficie (conjunto 0) en 9 columnas:
+  TIME, WIND_SPEED, WIND_DIR, AIR_TEMP, REL_HUM, SOLAR_RAD, ATM_PRESS, RAIN, CLOUDS. Con
+  `aem3d.onda_larga: LW_RAD_IN` la última columna pasa a ser la onda larga de ERA5.
+- `marea_paracas_<mes>.dat`: HEIGHT cada 15 min, una columna por frontera abierta (`aem3d.bc_frontera`:
+  norte = 1, oeste = 2). Cada columna es el promedio de los puntos de esa frontera; entre puntos difieren
+  0,9 cm (norte) y 2,8 cm (oeste).
+- `LEEME_aem3d.txt`: líneas para `run_aem3d.dat` (`start_date_cwr`, `DEFAULT_HEIGHT` y archivos).
+
+Cómo se verificó el formato, sin inventarlo:
+- **Estructura:** formato *Version 1* del manual (`~/AEM3D/docs/AEM3D_User.pdf`, sec. 3.7.2): 4 líneas de
+  encabezado y TIME en `yyyyddd.ddd`.
+- **Unidades:** las de la tabla 3.2. RAIN va en **m/día**: el ejemplo de `Model/test1` la tenía en m/h.
+  REL_HUM y CLOUDS van como fracción y ATM_PRESS en Pa.
+- **Columnas y hora:** las del ejemplo Lagoon y la guía del curso (`Model/test1/.../indicaciones.md`),
+  con TIME en **hora local UTC−5** (`aem3d.hora`).
+- **Prueba con AEM3D:** se corrió el ejemplo Lagoon (en una copia temporal) con estos dos archivos en
+  vez de los suyos. AEM3D los leyó sin errores y el nivel del agua siguió la marea exportada.
+
+Falta para correr Paracas, porque son decisiones de diseño de la malla:
+- la batimetría y el `bc.dat` del preprocesador, con los conjuntos 1 y 2 sobre las fronteras abiertas;
+- el resto de `run_aem3d.dat`.
 
 ## 7. Espacio en disco
 
