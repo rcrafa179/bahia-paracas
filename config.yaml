@@ -110,6 +110,8 @@ modelo_marea:
     # Si la conexión se corta, se reconecta y se reanuda desde el último byte recibido
     reintentos: 8
     espera_reintento_s: 20
+    # AVISO limita cada conexión a ~0,13 MB/s pero no el total: se bajan varios archivos a la vez
+    conexiones_paralelas: 5
   # Fronteras abiertas del dominio (puntos equiespaciados sobre cada segmento)
   fronteras:
     norte: {lat_ini: -13.60, lon_ini: -76.50, lat_fin: -13.60, lon_fin: -76.20, n: 13}

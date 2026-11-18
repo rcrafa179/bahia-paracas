@@ -2,6 +2,8 @@
 """00 - Descarga de FES2022b (elevaciones extrapoladas) desde el FTP de AVISO.
 
 Baja SOLO las constituyentes de modelo_marea.constituyentes (config.yaml), no las 34.
+AVISO limita cada conexión a ~0,13 MB/s (medido el 2026-11-18), pero no el total: por eso se
+bajan varios archivos a la vez (modelo_marea.descarga.conexiones_paralelas), uno por conexión.
 Cada .xz se baja a <archivo>.nc.xz.part; si la conexión se corta (el FTP de AVISO es lento,
 ~15 min por archivo) se reconecta y se REANUDA desde el último byte recibido (comando REST).
 Al completarse se descomprime a .nc y se borra el comprimido. Volver a correr el script
@@ -31,7 +33,9 @@ import lzma
 import netrc
 import posixpath
 import shutil
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from utils.config import RAIZ, cargar_config, parser_base, ruta
@@ -39,6 +43,9 @@ from utils.log import obtener_logger
 
 log = obtener_logger("00_fes2022_download")
 MB = 1024 ** 2
+
+# Con Ctrl+C se activa y cada hilo corta su descarga de inmediato (los .part quedan para reanudar)
+PARAR = threading.Event()
 
 # Errores de red tras los que vale la pena reconectar y reanudar
 ERRORES_RED = (OSError, EOFError, ftplib.error_temp, ftplib.error_reply)
@@ -130,19 +137,20 @@ def bajar_reanudable(sesion: Sesion, remoto: str, parcial: Path, tam: int,
     """Baja `remoto` en `parcial`, continuando desde lo que ya haya en disco.
 
     Devuelve True si el archivo quedó completo (tamaño == tam), False si se agotaron los reintentos."""
+    etq = f"  [{constituyente(parcial.name)}]"
     fallos = 0
     while True:
         hecho = parcial.stat().st_size if parcial.exists() else 0
         if tam and hecho == tam:
             return True
         if tam and hecho > tam:  # sobrante raro: se empieza de nuevo
-            log.warning(f"    {parcial.name} es más grande que el remoto; se reinicia")
+            log.warning(f"{etq} {parcial.name} es más grande que el remoto; se reinicia")
             parcial.unlink()
             hecho = 0
         if fallos > reintentos:
             return False
         if hecho:
-            log.info(f"    reanudando desde {hecho / MB:.1f} MB de {tam / MB:.1f} MB")
+            log.info(f"{etq} reanudando desde {hecho / MB:.1f} MB de {tam / MB:.1f} MB")
 
         recibido = hecho
         ultimo = t0 = time.time()
@@ -150,12 +158,14 @@ def bajar_reanudable(sesion: Sesion, remoto: str, parcial: Path, tam: int,
             with open(parcial, "ab") as f:
                 def bloque(datos: bytes):
                     nonlocal recibido, ultimo
+                    if PARAR.is_set():
+                        raise KeyboardInterrupt
                     f.write(datos)
                     recibido += len(datos)
-                    if time.time() - ultimo > 15:  # avance cada 15 s
+                    if time.time() - ultimo > 60:  # avance cada minuto
                         pct = 100 * recibido / tam if tam else float("nan")
                         vel = (recibido - hecho) / MB / max(time.time() - t0, 1e-3)
-                        log.info(f"    {recibido / MB:7.1f} / {tam / MB:.1f} MB ({pct:.0f} %, {vel:.2f} MB/s)")
+                        log.info(f"{etq} {recibido / MB:7.1f} / {tam / MB:.1f} MB ({pct:.0f} %, {vel:.2f} MB/s)")
                         ultimo = time.time()
 
                 sesion.ftp.retrbinary(f"RETR {remoto}", bloque, blocksize=1024 * 1024, rest=hecho or None)
@@ -165,7 +175,7 @@ def bajar_reanudable(sesion: Sesion, remoto: str, parcial: Path, tam: int,
             # Respuesta 5xx: si fue por REST (servidor sin reanudación) se baja completo, una sola vez
             sesion.cerrar(cortada=True)
             if hecho and fallos == 0:
-                log.warning(f"    el servidor no aceptó reanudar ({e}); se baja completo")
+                log.warning(f"{etq} el servidor no aceptó reanudar ({e}); se baja completo")
                 parcial.unlink(missing_ok=True)
                 fallos += 1
                 continue
@@ -174,11 +184,12 @@ def bajar_reanudable(sesion: Sesion, remoto: str, parcial: Path, tam: int,
             fallos += 1
             sesion.cerrar(cortada=True)
             if fallos > reintentos:
-                log.warning(f"    corte de conexión ({type(e).__name__}: {e}); sin reintentos restantes")
+                log.warning(f"{etq} corte de conexión ({type(e).__name__}: {e}); sin reintentos restantes")
                 continue
-            log.warning(f"    corte de conexión ({type(e).__name__}: {e}); "
+            log.warning(f"{etq} corte de conexión ({type(e).__name__}: {e}); "
                         f"intento {fallos}/{reintentos}, reconecto en {espera:.0f} s")
-            time.sleep(espera)
+            if PARAR.wait(espera):
+                raise KeyboardInterrupt
 
 
 def descomprimir(comprimido: Path, destino: Path):
@@ -194,6 +205,34 @@ def descomprimir(comprimido: Path, destino: Path):
         raise RuntimeError(f"{comprimido.name}: el .xz está incompleto o dañado; se borró, vuelve a correr el script")
     parcial.rename(destino)
     comprimido.unlink()
+
+
+def bajar_archivo(c: str, n: str, t: int, destino: Path, dsc: dict, usuario: str, clave: str) -> bool:
+    """Baja, descomprime y verifica una constituyente con su propia conexión FTP."""
+    local = destino / n.removesuffix(".xz")
+    parcial = destino / (n + ".part")
+    reintentos, espera = dsc.get("reintentos", 8), dsc.get("espera_reintento_s", 20)
+    # Restos de la versión anterior (descompresión al vuelo): no sirven para reanudar
+    local.with_suffix(local.suffix + ".part").unlink(missing_ok=True)
+    sesion = Sesion(dsc["host"], usuario, clave, dsc.get("timeout_s", 120))
+    t0 = time.time()
+    try:
+        ok = bajar_reanudable(sesion, posixpath.join(dsc["carpeta_remota"], n), parcial, t, reintentos, espera)
+    except BaseException:
+        sesion.cerrar(cortada=True)  # sin esperar al servidor
+        raise
+    sesion.cerrar()
+    if not ok:
+        log.error(f"  [{c}] se agotaron los {reintentos} reintentos; queda {parcial.name} para reanudar")
+        return False
+    if n.endswith(".xz"):
+        descomprimir(parcial, local)
+    else:
+        parcial.rename(local)
+    log.info(f"  [{c}] listo: {local.name} ({local.stat().st_size / MB:.0f} MB en disco, "
+             f"{(time.time() - t0) / 60:.1f} min)")
+    verificar(local)
+    return True
 
 
 def verificar(archivo: Path):
@@ -218,59 +257,68 @@ def main():
     base = ruta(mm["directorio"])
     destino = base / Path(mm["archivos"]).parent  # .../fes2022b/ocean_tide_extrapolated
     usuario, clave = credenciales(dsc["host"])
-    reintentos, espera = dsc.get("reintentos", 8), dsc.get("espera_reintento_s", 20)
+    paralelas = max(1, int(dsc.get("conexiones_paralelas", 4)))
 
     log.info(f"Conectando a {dsc['host']} como {usuario}")
     sesion = Sesion(dsc["host"], usuario, clave, dsc.get("timeout_s", 120))
-    fallidos = []
     try:
-        try:
-            remotos = listar_remotos(sesion.ftp, dsc["carpeta_remota"], buscadas)
-        except ERRORES_RED as e:
-            raise SystemExit(f"No se pudo conectar a {dsc['host']}: {e}")
-        total = sum(t for _, t in remotos.values())
-        for c, (n, t) in remotos.items():
-            log.info(f"  {c:>4}: {n} ({t / MB:.0f} MB comprimido)")
-        log.info(f"Total a bajar: {total / MB:.0f} MB comprimidos")
-        if args.listar:
-            return
-
-        destino.mkdir(parents=True, exist_ok=True)
-        libre = shutil.disk_usage(destino).free
-        # Descomprimido ocupa más que el .xz; se exige un margen holgado
-        necesario = 3 * total + 2 * 1024 ** 3
-        log.info(f"Espacio libre en disco: {libre / 1024 ** 3:.1f} GiB")
-        if libre < necesario:
-            raise SystemExit(f"Poco espacio: hay {libre / 1024 ** 3:.1f} GiB y se piden al menos "
-                             f"{necesario / 1024 ** 3:.1f} GiB (3 x comprimido + 2 GiB)")
-
-        for i, (c, (n, t)) in enumerate(remotos.items(), 1):
-            local = destino / n.removesuffix(".xz")
-            parcial = destino / (n + ".part")
-            if args.forzar:
-                local.unlink(missing_ok=True)
-                parcial.unlink(missing_ok=True)
-            if local.exists():
-                log.info(f"[{i}/{len(remotos)}] {local.name} ya existe, se omite")
-                continue
-            # Restos de la versión anterior (descompresión al vuelo): no sirven para reanudar
-            local.with_suffix(local.suffix + ".part").unlink(missing_ok=True)
-            log.info(f"[{i}/{len(remotos)}] Bajando {n} ({t / MB:.0f} MB)")
-            t0 = time.time()
-            if not bajar_reanudable(sesion, posixpath.join(dsc["carpeta_remota"], n), parcial, t,
-                                    reintentos, espera):
-                log.error(f"    {n}: se agotaron los {reintentos} reintentos; queda {parcial.name} para reanudar")
-                fallidos.append(n)
-                continue
-            if n.endswith(".xz"):
-                descomprimir(parcial, local)
-            else:
-                parcial.rename(local)
-            log.info(f"    listo: {local.name} ({local.stat().st_size / MB:.0f} MB en disco, "
-                     f"{(time.time() - t0) / 60:.1f} min)")
-            verificar(local)
+        remotos = listar_remotos(sesion.ftp, dsc["carpeta_remota"], buscadas)
+    except ERRORES_RED as e:
+        raise SystemExit(f"No se pudo conectar a {dsc['host']}: {e}")
     finally:
         sesion.cerrar()
+    total = sum(t for _, t in remotos.values())
+    for c, (n, t) in remotos.items():
+        log.info(f"  {c:>4}: {n} ({t / MB:.0f} MB comprimido)")
+    log.info(f"Total en el servidor: {total / MB:.0f} MB comprimidos")
+    if args.listar:
+        return
+
+    destino.mkdir(parents=True, exist_ok=True)
+    libre = shutil.disk_usage(destino).free
+    # Descomprimido ocupa más que el .xz; se exige un margen holgado
+    necesario = 3 * total + 2 * 1024 ** 3
+    log.info(f"Espacio libre en disco: {libre / 1024 ** 3:.1f} GiB")
+    if libre < necesario:
+        raise SystemExit(f"Poco espacio: hay {libre / 1024 ** 3:.1f} GiB y se piden al menos "
+                         f"{necesario / 1024 ** 3:.1f} GiB (3 x comprimido + 2 GiB)")
+
+    pendientes = {}
+    for c, (n, t) in remotos.items():
+        local = destino / n.removesuffix(".xz")
+        if args.forzar:
+            local.unlink(missing_ok=True)
+            (destino / (n + ".part")).unlink(missing_ok=True)
+        if local.exists():
+            log.info(f"  [{c}] {local.name} ya existe, se omite")
+        else:
+            pendientes[c] = (n, t)
+    falta = sum(t - ((destino / (n + ".part")).stat().st_size if (destino / (n + ".part")).exists() else 0)
+                for n, t in pendientes.values())
+    paralelas = min(paralelas, len(pendientes)) or 1
+    log.info(f"Por bajar: {len(pendientes)} archivos, {falta / MB:.0f} MB, con {paralelas} conexiones "
+             f"a la vez (~{falta / MB / (0.13 * paralelas) / 60:.0f} min a 0,13 MB/s por conexión)")
+
+    fallidos = []
+    pool = ThreadPoolExecutor(max_workers=paralelas)
+    try:
+        tareas = {pool.submit(bajar_archivo, c, n, t, destino, dsc, usuario, clave): n
+                  for c, (n, t) in pendientes.items()}
+        for hecha in as_completed(tareas):
+            n = tareas[hecha]
+            try:
+                if not hecha.result():
+                    fallidos.append(n)
+            except (Exception, SystemExit) as e:  # un archivo con problemas no detiene a los demás
+                log.error(f"  {n}: {e}")
+                fallidos.append(n)
+    except KeyboardInterrupt:
+        log.warning("Interrumpido: cerrando conexiones. Los .part quedan; al volver a correr se reanuda.")
+        PARAR.set()
+        pool.shutdown(wait=True, cancel_futures=True)
+        raise SystemExit(130)
+    finally:
+        pool.shutdown(wait=True)
 
     archivos = sorted(destino.glob("*_fes2022.nc"))
     tam = sum(a.stat().st_size for a in archivos)
