@@ -227,7 +227,7 @@ def main():
         log.info("[sanidad] rango de marea predicho del orden de 1 m -> OK")
     serie.round(4).to_csv(procdir / "marea_frontera_mes_candidato.csv")
     log.info("Guardado: data/processed/marea_frontera_mes_candidato.csv (nivel respecto del nivel medio, m)")
-    fig_serie_candidato(serie, cand, procdir, figdir)
+    fig_serie_candidato(serie, cand, cfg, procdir, figdir)
 
     exportar_aem3d(serie.drop(columns="mareografo"), pts, procdir / "aem3d")
     log.info("Modelo de marea terminado")
@@ -271,21 +271,69 @@ def fig_fronteras(t, figdir):
     guardar(fig, figdir, "marea_armonicos_fronteras", log)
 
 
-def fig_serie_candidato(serie, cand, procdir, figdir):
+def observado_candidato(serie, cand, cfg, procdir):
+    """IOC del mes candidato (estación principal, antes del QC contra la referencia) y su factor de escala.
+
+    Si el mes falló el QC solo por la pendiente (r alto, amplitudes escaladas), el factor es 1/pendiente,
+    tomado de la comparación con la marea predicha por UHSLC (independiente de FES2022).
+    Devuelve (serie sin media, factor, pendiente) o (None, 1, nan) si no hay datos."""
+    est = cfg["ioc"]["estaciones"][0]
+    p = procdir / "marea_ioc_horaria_previa_qc.csv"
+    if not p.exists():
+        log.warning("No existe marea_ioc_horaria_previa_qc.csv: correr 05 para validar el mes candidato")
+        return None, 1.0, np.nan
+    obs = pd.read_csv(p, index_col=0, parse_dates=True)[est].loc[serie.index[0]:serie.index[-1]]
+    if obs.notna().sum() <= 48:
+        log.info(f"IOC {est} no tiene datos suficientes en {cand['mes']}: no se valida la serie predicha")
+        return None, 1.0, np.nan
+    obs = obs - obs.mean()
+    factor, pend = 1.0, np.nan
+    pq = procdir / "marea_ioc_qc_mensual.csv"
+    if pq.exists():
+        q = pd.read_csv(pq)
+        f = q[(q.estacion == est) & (q.mes == cand["mes"])]
+        if len(f):
+            pend = float(f.pendiente.iloc[0])
+            qc = cfg["analisis_marea"]["qc_referencia"]
+            if not f.aprobado.iloc[0] and f.r.iloc[0] >= qc["r_min"]:
+                factor = 1.0 / pend
+                log.warning(f"IOC {est} {cand['mes']} falló el QC por escala (pendiente {pend:.3f} frente a "
+                            f"UHSLC): para validar se corrige por {factor:.3f}")
+            elif not f.aprobado.iloc[0]:
+                log.warning(f"IOC {est} {cand['mes']} falló el QC por correlación (r = {f.r.iloc[0]:.3f}): "
+                            "la validación es solo indicativa")
+    return obs, factor, pend
+
+
+def metricas(obs, pred):
+    ok = obs.notna() & pred.notna()
+    return float(np.sqrt(((obs[ok] - pred[ok]) ** 2).mean())), float(np.corrcoef(obs[ok], pred[ok])[0, 1])
+
+
+def fig_serie_candidato(serie, cand, cfg, procdir, figdir):
     fig, ax = plt.subplots(figsize=(13, 4.5))
     ax.plot(serie.index, serie.mareografo, lw=1, label="FES2022 predicho (mareógrafo)")
-    p = procdir / "marea_ioc_horaria.csv"
-    if p.exists():
-        obs = pd.read_csv(p, index_col=0, parse_dates=True).nivel_m.loc[serie.index[0]:serie.index[-1]]
-        if obs.notna().sum() > 48:
-            obs = obs - obs.mean()
+    obs, factor, pend = observado_candidato(serie, cand, cfg, procdir)
+    if obs is not None:
+        pred_h = serie.mareografo.reindex(obs.index)
+        rmse, r = metricas(obs, pred_h)
+        val = {"mes": cand["mes"], "pendiente_vs_uhslc": None if np.isnan(pend) else round(pend, 4),
+               "factor_escala": round(factor, 4), "rmse_sin_corregir_m": round(rmse, 4), "r": round(r, 4)}
+        texto = f"Sin corregir: RMSE = {100 * rmse:.1f} cm, r = {r:.3f}"
+        log.info(f"FES2022 vs IOC sin corregir en {cand['mes']}: RMSE = {100 * rmse:.1f} cm, r = {r:.3f}")
+        if factor != 1.0:
+            ax.plot(obs.index, obs, ".", color="0.65", ms=2, label="IOC observado, sin corregir (sin media)")
+            corr = obs * factor
+            rmse_c, _ = metricas(corr, pred_h)
+            val["rmse_corregido_m"] = round(rmse_c, 4)
+            ax.plot(corr.index, corr, "k.", ms=2, label=f"IOC corregido ×{factor:.3f} (error de escala)")
+            texto += f"\nCorregido ×{factor:.3f}: RMSE = {100 * rmse_c:.1f} cm"
+            log.info(f"FES2022 vs IOC corregido ×{factor:.3f}: RMSE = {100 * rmse_c:.1f} cm")
+        else:
             ax.plot(obs.index, obs, "k.", ms=2, label="IOC observado (sin media)")
-            pred_h = serie.mareografo.reindex(obs.index)
-            ok = obs.notna() & pred_h.notna()
-            rmse = np.sqrt(((obs[ok] - pred_h[ok]) ** 2).mean())
-            r = np.corrcoef(obs[ok], pred_h[ok])[0, 1]
-            ax.text(0.01, 0.95, f"RMSE = {100 * rmse:.1f} cm, r = {r:.3f}", transform=ax.transAxes, va="top")
-            log.info(f"FES2022 vs IOC en {cand['mes']}: RMSE = {100 * rmse:.1f} cm, r = {r:.3f}")
+        ax.text(0.01, 0.95, texto, transform=ax.transAxes, va="top")
+        with open(procdir / "validacion_fes_mes_candidato.yaml", "w", encoding="utf-8") as f:
+            yaml.safe_dump(val, f, allow_unicode=True, sort_keys=False)
     ax.set_ylabel("Nivel respecto del nivel medio (m)")
     ax.set_xlabel("Fecha (UTC)")
     ax.set_title(f"Marea predicha para el mes candidato ({cand['mes']}), paso de 15 min")

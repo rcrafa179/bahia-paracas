@@ -3,7 +3,7 @@
 
 Analiza dos series:
   * IOC 2025–2026 (ventana elegida en 05)  -> serie principal
-  * UHSLC, año de referencia (p. ej. 2022) -> control de calidad
+  * UHSLC, año de referencia (2015, último año sin error de escala) -> control de calidad
 y compara sus constituyentes.
 
 Salidas (data/processed/):

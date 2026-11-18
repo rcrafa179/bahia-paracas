@@ -81,7 +81,12 @@ uhslc:
   url_rq: "https://uhslc.soest.hawaii.edu/data/csv/rqds/pacific/hourly/h683b.csv"
   url_fd: null                    # Pisco no tiene 'fast delivery' en UHSLC (404)
   valor_faltante: -32767
-  anio_referencia: "auto"         # 'auto' = año más completo (empates -> más reciente) o un año fijo, p. ej. 2022
+  # Año de referencia para el QC del IOC: 'auto' = año más completo (empates -> más reciente) o un año fijo.
+  # Se fija 2015 porque desde mayo de 2016 hasta enero de 2025 el registro de Pisco tiene un error de escala
+  # (amplitudes ×1,36–1,40 en todas las constituyentes, fases iguales; salto tras un hueco en abril de 2016).
+  # Evidencia: Callao y San Juan no cambian y FES2022 coincide con Pisco 1992–2015 y con el IOC desde
+  # ago-2025 (ver scripts/07b_control_vecinos.py). 2015: 99,1 % completo, último año limpio.
+  anio_referencia: 2015
   carpeta_raw: "data/raw/uhslc"
 
 analisis_marea:
@@ -93,7 +98,23 @@ analisis_marea:
   qc_referencia:                  # compara cada mes del IOC con la marea predicha a partir de UHSLC
     aplicar: true                 # descarta los meses que fallan
     r_min: 0.95                   # correlación mínima
-    pendiente_tol: 0.10           # |pendiente obs/pred − 1| máxima (detecta amplitudes atenuadas)
+    pendiente_tol: 0.10           # |pendiente obs/pred − 1| máxima (detecta errores de escala del sensor)
+
+# Control externo del mareógrafo de Pisco con estaciones vecinas y FES2022 (scripts/07b_control_vecinos.py)
+control_vecinos:
+  # Mareógrafos UHSLC research quality, verificados en https://uhslc.soest.hawaii.edu/data/meta.geojson
+  # (id, versión vigente y coordenadas consultadas el 2026-11-18)
+  estaciones:
+    - {nombre: "Callao", id: 93, lat: -12.06897, lon: -77.16673,
+       url: "https://uhslc.soest.hawaii.edu/data/csv/rqds/pacific/hourly/h093b.csv",
+       # fast delivery (sin QC final, llega hasta hace ~2 meses): compara el nivel medio con el IOC 2025-26
+       url_fd: "https://uhslc.soest.hawaii.edu/data/csv/fast/hourly/h093.csv"}
+    - {nombre: "San Juan de Marcona", id: 96, lat: -15.3667, lon: -75.2,
+       url: "https://uhslc.soest.hawaii.edu/data/csv/rqds/pacific/hourly/h096b.csv"}
+  constituyentes: ["M2", "S2", "N2", "K1", "O1", "P1"]
+  anio_comparacion: 2022          # año común para comparar las tres estaciones con FES2022
+  completitud_minima_anual: 0.60  # años con menos horas válidas no se analizan
+  tolerancia_razon: 0.10          # |Pisco / media de vecinos − 1| mayor que esto marca el año como sospechoso
 
 modelo_marea:
   nombre: "FES2022_extrapolated"  # nombre del modelo en la base de datos de pyTMD

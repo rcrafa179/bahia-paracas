@@ -320,7 +320,7 @@ def main():
 
     # --- IOC ------------------------------------------------------------------
     codigos = cfg["ioc"]["estaciones"]
-    series, tablas_qc = {}, []
+    series, previas, tablas_qc = {}, {}, []
     for cod in codigos:
         sensor = cfg["ioc"]["sensor_preferido"][cod]
         partes = []
@@ -331,6 +331,7 @@ def main():
         todo = pd.concat(partes, ignore_index=True)
         hor, _ = qc_ioc(todo, sensor, cod)
         hor = hor.reindex(horas)
+        previas[cod] = hor
         tabla, mascara = qc_referencia(hor, pred_ref, cod, cfg)
         tablas_qc.append(tabla)
         series[cod] = hor.where(mascara)
@@ -364,6 +365,11 @@ def main():
 
     ioc.index.name = "tiempo_utc"
     ioc.round(4).to_csv(procdir / "marea_ioc_horaria.csv")
+    # Serie de cada estación ANTES del QC contra la referencia (con su QC básico de picos y saltos):
+    # 07 la usa para validar el mes candidato aunque ese mes haya fallado por un error de escala
+    prev = pd.DataFrame(previas)
+    prev.index.name = "tiempo_utc"
+    prev.round(4).to_csv(procdir / "marea_ioc_horaria_previa_qc.csv")
     fig_cobertura_ioc(cob, (v_ini, v_fin), figdir)
     fig_serie(ioc, figdir)
 
@@ -373,7 +379,7 @@ def main():
            "uhslc": {"anio": anio, "completitud": round(float(comp_anual[anio]), 4)}}
     with open(procdir / "seleccion_marea.yaml", "w", encoding="utf-8") as f:
         yaml.safe_dump(sel, f, allow_unicode=True, sort_keys=False)
-    log.info("Guardados: marea_ioc_horaria.csv, marea_uhslc_horaria.csv, marea_ioc_qc_mensual.csv, seleccion_marea.yaml")
+    log.info("Guardados: marea_ioc_horaria.csv, marea_ioc_horaria_previa_qc.csv, marea_uhslc_horaria.csv, marea_ioc_qc_mensual.csv, seleccion_marea.yaml")
 
 
 if __name__ == "__main__":

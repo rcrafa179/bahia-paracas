@@ -30,7 +30,7 @@ def fmt(x, nd=2, unidad=""):
             return PEND
     except (TypeError, ValueError):
         return str(x)
-    return f"{float(x):.{nd}f}{unidad}"
+    return f"{round(float(x), nd) + 0.0:.{nd}f}{unidad}"  # + 0.0 evita el "-0.0"
 
 
 def tex(texto) -> str:
@@ -92,13 +92,49 @@ def macros(cfg, proc) -> dict[str, str]:
     sel = leer_yaml(proc / "seleccion_marea.yaml") or {}
     m["seriePrincipal"] = str(sel.get("principal", PEND)).upper()
     m["anioUhslc"] = str(sel.get("uhslc", {}).get("anio", PEND))
+    princ = sel.get("principal", "")
+    if princ == "ioc" and "ioc" in sel:
+        ini, fin = pd.Timestamp(sel["ioc"]["inicio"]), pd.Timestamp(sel["ioc"]["fin"])
+        m["ventanaPrincipal"] = f"{ini:%m/%Y} a {fin:%m/%Y}"
+        m["completitudPrincipal"] = fmt(100 * sel["ioc"]["completitud"], 1)
+    elif princ == "uhslc" and "uhslc" in sel:
+        m["ventanaPrincipal"] = str(sel["uhslc"]["anio"])
+        m["completitudPrincipal"] = fmt(100 * sel["uhslc"]["completitud"], 1)
+    m["figObsPred"] = f"marea_observado_predicho_{princ or 'ioc'}"
     qc = leer_csv(proc / "marea_ioc_qc_mensual.csv")
     if qc is not None:
         p = qc[qc.estacion == cfg["ioc"]["estaciones"][0]]
         m["qcAprobados"] = f"{int(p.aprobado.sum())} de {len(p)}"
-        m["pendienteIoc"] = fmt(p.loc[~p.aprobado, "pendiente"].median(), 2)
+        ok = p[p.aprobado]
+        m["pendienteAprobados"] = f"{ok.pendiente.min():.2f}--{ok.pendiente.max():.2f}" if len(ok) else PEND
     else:
-        m["qcAprobados"] = m["pendienteIoc"] = PEND
+        m["qcAprobados"] = PEND
+
+    # Validación del mes candidato y control con estaciones vecinas (07 y 07b)
+    val = leer_yaml(proc / "validacion_fes_mes_candidato.yaml") or {}
+    m["pendienteCandidato"] = fmt(val.get("pendiente_vs_uhslc"), 2)
+    m["factorCandidato"] = fmt(val.get("factor_escala"), 3)
+    m["rmseCandSin"] = fmt(100 * val["rmse_sin_corregir_m"], 1) if "rmse_sin_corregir_m" in val else PEND
+    m["rmseCandCorr"] = fmt(100 * val["rmse_corregido_m"], 1) if "rmse_corregido_m" in val else PEND
+    anual = leer_csv(proc / "control_vecinos_m2_anual.csv")
+    if anual is not None and anual.sospechoso.any():
+        malos = anual[anual.sospechoso]
+        m["razonError"] = fmt(malos.razon_pisco_vecinos.mean(), 2)
+        m["aniosError"] = f"{malos.anio.min()}--{malos.anio.max()}"
+        buenos = anual[~anual.sospechoso & anual.razon_pisco_vecinos.notna()]
+        m["aniosBuenos"] = f"{buenos.anio.min()}--{buenos.anio[buenos.anio < malos.anio.min()].max()}"
+    cv = leer_csv(proc / "control_vecinos_fes.csv")
+    if cv is not None:
+        r = cv.groupby("estacion").razon_fes_obs.mean()
+        for est, k in [("Callao", "razonFesCallao"), ("San Juan de Marcona", "razonFesSanJuan"),
+                       ("Pisco", "razonFesPisco")]:
+            if est in r:
+                m[k] = fmt(r[est], 2)
+    nm = leer_csv(proc / "control_vecinos_nivel_medio.csv", index_col=0)
+    if nm is not None and len(nm) > 3:
+        m["corrNivelMedio"] = fmt(nm.corr().iloc[0, 1], 2)
+        m["rangoNivelMedio"] = fmt(100 * (nm.iloc[:, 0].max() - nm.iloc[:, 0].min()), 0)
+        m["difNivelMedio"] = fmt(100 * (nm.iloc[:, 0] - nm.iloc[:, 1]).abs().max(), 1)
     res = leer_csv(proc / "resumen_marea.csv")
     if res is not None:
         r = res[res.principal].iloc[0] if "principal" in res and res.principal.any() else res.iloc[0]
@@ -140,7 +176,10 @@ def macros(cfg, proc) -> dict[str, str]:
         m["profMedia"], m["profMax"] = fmt(r.profundidad_media_m, 1), fmt(r.profundidad_maxima_m, 1)
     for k in ["areaBahia", "volBahia", "profMedia", "profMax", "dAmMdosFes", "dgMdosFes", "dAmMdosIoc", "dgMdosIoc",
               "factorF", "claseMarea", "rangoSicigia", "rangoCuadratura", "rangoMaximo", "rangoSicigiaObs",
-              "rangoCuadraturaObs", "varExplicada", "rmsResiduo", "seriePrincipalNombre"] + \
+              "rangoCuadraturaObs", "varExplicada", "rmsResiduo", "seriePrincipalNombre",
+              "ventanaPrincipal", "completitudPrincipal", "pendienteAprobados", "razonError", "aniosError",
+              "aniosBuenos", "razonFesCallao", "razonFesSanJuan", "razonFesPisco", "corrNivelMedio",
+              "rangoNivelMedio", "difNivelMedio"] + \
              [f"amp{c.replace('2', 'dos').replace('1', 'uno')}" for c in ["M2", "S2", "N2", "K1", "O1", "P1"]]:
         m.setdefault(k, PEND)
     return m

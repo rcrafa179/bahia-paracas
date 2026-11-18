@@ -25,6 +25,7 @@ paracas/
     ├── 00_fes2022_download.py
     ├── 01_era5_download.py        06_tide_harmonic_analysis.py
     ├── 02_era5_process.py         07_tide_model_pytmd.py
+    │                              07b_control_vecinos.py
     ├── 03_metar_download.py       08_bathymetry_gebco.py
     ├── 04_meteo_validation.py     09_presentacion.py
     ├── 05_tide_gauge_download.py
@@ -86,6 +87,7 @@ python scripts/00_fes2022_download.py            # baja FES2022b (15 constituyen
 python scripts/05_tide_gauge_download.py    # IOC (2025–26) + UHSLC (referencia), QC y selección
 python scripts/06_tide_harmonic_analysis.py # UTide: constituyentes, F, rangos, residuo
 python scripts/07_tide_model_pytmd.py       # FES2022: armónicos, fronteras y serie de 15 min (necesita FES2022b)
+python scripts/07b_control_vecinos.py       # control de Pisco con Callao, San Juan y FES2022 (necesita FES2022b)
 
 # --- Batimetría ---
 python scripts/08_bathymetry_gebco.py       # necesita el recorte de GEBCO
@@ -105,6 +107,7 @@ python scripts/09_presentacion.py           # escribe las cifras y compila prese
 | METAR Pisco | ICAO **SPSO**, IEM ASOS | `https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py`; SPSO en 13.7449°S, 76.2203°W. |
 | Mareógrafo IOC | `pisco` (radar), `pisc2` (presión) | `https://www.ioc-sealevelmonitoring.org/service.php?query=data`; 13.8194°S, 76.2519°W; tiempo real **sin control de calidad**. |
 | Mareógrafo UHSLC | **683** (Pisco), *research quality* | `h683b.csv` (1991–2023-04); no hay *fast delivery* para Pisco. Su metadato de posición (13.42°S, 76.13°W) cae en Chincha, se ignora. |
+| Mareógrafos UHSLC de control | **093** Callao, **096** San Juan de Marcona | `meta.geojson` de UHSLC (consultado 2026-11-18): Callao `h093b.csv` (1970–2024) y *fast delivery* `h093.csv` (hasta 2026-09); San Juan `h096b.csv` (2003–2023-04). |
 
 ## 5. Problemas encontrados en los datos (importante)
 
@@ -115,19 +118,29 @@ python scripts/09_presentacion.py           # escribe las cifras y compila prese
   (`vientos_paracas.fuente: metar`). Con ERA5 saldría 2025-08 por el viento vespertino más intenso,
   pero en SPSO ese mes tuvo solo 3 eventos.
 - **Mes candidato: enero de 2025**, fijado con `vientos_paracas.mes_candidato: "2025-01"`. En SPSO empata
-  con marzo de 2025 (10 eventos cada uno; el desempate automático daría marzo). Se eligió enero porque es
-  el único mes en que el mareógrafo IOC pasa el control de calidad, así que la marea predicha para el
-  forzamiento se puede comparar con la observada. Con `mes_candidato: auto` lo elige el script.
+  con marzo de 2025 (10 eventos cada uno; el desempate automático daría marzo, pero en marzo no hay datos
+  del mareógrafo IOC). Con `mes_candidato: auto` lo elige el script.
 - **El forzamiento meteorológico sigue siendo ERA5** (punto de la boca), con el viento subestimado en los
   eventos. Falta decidir si se escala con la razón observado/ERA5 o se usa el viento de SPSO.
-- **El mareógrafo IOC 2025–26 no sirve para el análisis armónico.** `05` compara cada mes con la marea
-  predicha a partir de UHSLC 2022:
-  - `pisco` solo es bueno en enero 2025. Desde agosto 2025 registra amplitudes ~27 % menores
-    (pendiente ≈ 0,73), aunque su fase es correcta (r ≈ 0,99).
-  - `pisc2` es ruidosa (r ≈ 0,86).
+- **El registro de Pisco tiene un error de escala entre mayo de 2016 y enero de 2025.** Todas las
+  constituyentes salen ×1,35 (diurnas y semidiurnas por igual, fases sin cambio). `07b` lo demuestra:
+  - la amplitud anual de M2 en Pisco es ~23 cm en 1992–2015 y salta a ~31 cm desde mayo de 2016 (tras un
+    hueco en abril), mientras Callao (~23,5 cm) y San Juan (~25 cm) no cambian;
+  - FES2022 coincide con Callao y San Juan (razón 0,99 y 1,01) y da 0,73 del valor de Pisco 2022;
+  - el radar IOC `pisco` desde agosto de 2025 vuelve a coincidir con FES2022 y con UHSLC 2015.
 
-  Con `analisis_marea.serie_principal: auto`, el análisis armónico principal se hace con **UHSLC 2022**
-  (99,8 % completo) y el IOC de enero 2025 queda como verificación independiente.
+  Una amplificación real de la bahía dependería de la frecuencia y no cambiaría con los años: es un
+  problema de calibración del registro (UHSLC 2016–2022 e IOC enero 2025). Por eso
+  `uhslc.anio_referencia` está fijado en **2015**, el último año limpio (99,1 % completo). Con esa
+  referencia el QC aprueba 15 de 16 meses de `pisco` (pendiente 0,97–1,01) y descarta enero 2025
+  (pendiente 1,32); `pisc2` sigue descartada por ruidosa (r ≈ 0,86). El análisis armónico principal es el
+  **IOC 10/2025–09/2026** (84,6 % de horas válidas), y coincide con UHSLC 2015 en menos de 0,3 cm.
+- **Validación del mes candidato.** El IOC de enero 2025 tiene el error de escala, así que `07` lo
+  compara con FES2022 sin corregir (RMSE 9,2 cm) y corregido por 1/pendiente del QC, un factor que no
+  depende de FES (×0,755; RMSE 4,2 cm). La serie antes del QC queda en `marea_ioc_horaria_previa_qc.csv`.
+- **El nivel medio sube ~32 cm entre fines de 2025 y mediados de 2026.** Callao (UHSLC *fast delivery*)
+  muestra lo mismo (r = 1,00, diferencia máxima 1,7 cm; `control_vecinos_nivel_medio.csv`): es una
+  señal oceanográfica regional, no una deriva del sensor. Explica que el residuo del IOC (RMS 11 cm) sea mayor que el de UHSLC 2015 (6 cm).
 
 ## 6. AEM3D
 
@@ -152,4 +165,4 @@ Medido al terminar (periodo completo, sin FES2022b ni GEBCO):
 | `presentacion/` (PDF incluido) | 8,2 MB |
 | **Total del repositorio** | **≈ 51 MB** |
 | GEBCO recortado | < 1 MB |
-| FES2022b (solo elevaciones, ~15 constituyentes) | varios GB (lo más pesado); `07` guarda un recorte regional de pocos MB, después se pueden borrar los globales |
+| FES2022b (solo elevaciones, 15 constituyentes) | 2,3 GB (medido); `07` guarda un recorte regional de pocos MB, pero `07b` necesita los globales (Callao y San Juan quedan fuera del recorte) |
