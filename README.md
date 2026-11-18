@@ -100,7 +100,8 @@ python scripts/09_presentacion.py           # escribe las cifras y compila prese
 # --- AEM3D ---
 python scripts/10_exportar_aem3d.py         # archivos de forzamiento de AEM3D (necesita 04 y 07)
 python scripts/11_malla_aem3d.py --correr   # malla y caso; corre pre_aem3d y la prueba de 6 h (en prueba/)
-python scripts/11_malla_aem3d.py --corrida  # corrida de 14 días en run/ (~40 min con 5 hilos) y su revisión
+python scripts/11_malla_aem3d.py --corrida  # corrida de 14 días en run/ (~2 h con 5 hilos) y su revisión
+python scripts/12_resultados_aem3d.py       # análisis: marea en el mareógrafo, corrientes y viento
 ```
 
 `02` y `04` deben correr antes que `07`, porque `07` usa el mes candidato (`data/processed/mes_candidato.yaml`).
@@ -214,26 +215,32 @@ entero:
 
 La latitud para Coriolis va en la batimetría: esta versión no acepta `latitude` en `run_aem3d.dat`.
 
-`--correr` ejecuta `pre_aem3d` y una corrida **barotrópica** de 6 h en `prueba/`, con la misma fecha de
-inicio y sin tocar `run/`: marea y viento, sin temperatura, salinidad ni calor (con `idensity = 0`,
-AEM3D exige `iclosure = 0`). Resultado:
-- termina sin errores en ~1,5 min y la corriente máxima es 0,12 m/s;
-- en la celda del mareógrafo, AEM3D reproduce la marea de FES2022 con 1 cm de diferencia como máximo,
-  pasadas las 3 h de arranque.
+**Cómo entra el viento (comprobado el 2026-11-18).** La primera versión del caso era barotrópica pura:
+`idensity = 0`, y con eso AEM3D exige `iclosure = 0`. Con esa configuración el viento **no tenía ningún
+efecto**: con un viento constante de 15 m/s las corrientes salían idénticas a las de la corrida con el
+viento real, cifra por cifra. En esta versión el viento entra al agua solo a través del modelo de capa
+de mezcla (`iclosure = 6`), que exige densidad. Con `itemperature = 1`, `idensity = 1` e `iclosure = 6`,
+los mismos 15 m/s dan corrientes de superficie de 0,7–0,9 m/s. Por eso el caso usa esa configuración:
+- sin flujos de calor (`iheat_input = 0`), sin salinidad y con temperatura inicial uniforme;
+- el agua sigue homogénea, así que es una corrida de **marea y viento**, no baroclínica.
+
+`--correr` ejecuta `pre_aem3d` y la prueba de 6 h en `prueba/`, con la misma fecha de inicio y sin tocar
+`run/`. Termina sin errores en ~2 min, la corriente máxima es 0,14 m/s y, en la celda del mareógrafo,
+AEM3D reproduce la marea de FES2022 con 2,2 cm de diferencia como máximo pasadas las 3 h de arranque.
 
 **Ejecución en paralelo:** el caso usa `aem3d_openmp` con `nthreads = 5` (`malla_aem3d.programa` y
 `malla_aem3d.hilos`). El M3 Pro tiene 5 núcleos de rendimiento y 6 de eficiencia. Con la prueba de 6 h
 se midió:
 
-| Hilos | Tiempo |
+| Hilos | Tiempo (prueba barotrópica, sin capa de mezcla) |
 |---|---|
 | 1 | 91 s |
 | 5 | 33–45 s |
 | 10–11 | 42–47 s |
 
 Usar más de 5 hilos no acelera, porque los núcleos lentos frenan a los demás. El resultado con 5 hilos
-coincide con el de 1 hilo: el nivel difiere como mucho 0,03 mm. La corrida de 14 días avanza ~17 pasos
-por segundo con 5 hilos, así que tarda ~40 min.
+coincide con el de 1 hilo: el nivel difiere como mucho 0,03 mm. Con la capa de mezcla activa cada paso
+cuesta unas 3 veces más (prueba de 6 h: 123 s con 5 hilos), así que la corrida de 14 días tarda ~2 h.
 
 Para correrla:
 - **Con el script:** `python scripts/11_malla_aem3d.py --corrida`. Usa `caffeinate` para que el Mac no
@@ -241,8 +248,8 @@ Para correrla:
   Guarda el resultado en `malla_aem3d_resumen.yaml` (claves `corrida_*`) sin borrar el de la prueba.
 - **A mano:** `cd data/processed/aem3d/caso_paracas/run && caffeinate -i aem3d_openmp > salida.txt 2>&1`.
 
-Falta para la corrida completa del mes: activar temperatura, salinidad, densidad y calor (`iheat_input`,
-`itemperature`, `isalinity`, `idensity` = 1, `iclosure` = 6). Para eso se necesitan perfiles iniciales
+Falta para una corrida baroclínica: activar salinidad y flujos de calor (`isalinity`, `iheat_input` = 1)
+y partir de una estratificación real. Para eso se necesitan perfiles iniciales
 de temperatura y salinidad de la bahía (`initial_profile_file`) y, en las fronteras abiertas,
 `profile_boundary_condition_file`. No hay esos datos en el repositorio: hay que conseguirlos (IMARPE,
 cruceros o Copernicus Marine) y no se inventan.

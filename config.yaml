@@ -178,6 +178,8 @@ malla_aem3d:
     margen_superior_m: 1.5        # altura de la malla sobre el nivel medio (marea alta + margen)
   # Ejecución. M3 Pro: 5 núcleos de rendimiento + 6 de eficiencia. Medido el 2026-11-18 con la prueba
   # de 6 h: 1 hilo 91 s; 5 hilos 33–45 s; 10–11 hilos 42–47 s (los núcleos lentos frenan a los demás).
+  # Con la capa de mezcla activa (iclosure = 6, necesaria para que actúe el viento) la prueba de 6 h
+  # tarda 123 s con 5 hilos: la corrida de 14 días, ~2 h.
   programa: "aem3d_openmp"        # aem3d (un núcleo) | aem3d_openmp (paralelo)
   hilos: 5                        # nthreads de run_aem3d.dat (solo lo usa aem3d_openmp)
   # La versión DEMO de AEM3D instalada permite como máximo 2 semanas de simulación

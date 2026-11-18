@@ -7,7 +7,7 @@ Arma un caso completo con la estructura de ~/AEM3D/Model/Lagoon:
     pre/run_pre.dat                    control del preprocesador
     pre/bathymetry/paracas_bathymetry.dat
     pre/bathymetry/paracas_bc.dat      conjuntos open_cell de cada frontera abierta
-    run/run_aem3d.dat                  corrida de malla_aem3d.corrida (barotrópica: marea y viento),
+    run/run_aem3d.dat                  corrida de malla_aem3d.corrida (marea y viento, agua homogénea),
                                        lista para correr a mano: cd run && aem3d_openmp
     run/infiles/datablock.xml          salidas horarias (nivel y velocidades en superficie)
     run/infiles/*.dat                  forzamiento copiado de data/processed/aem3d (script 10)
@@ -254,18 +254,24 @@ def cobertura_y_nivel(cfg, t0: pd.Timestamp, t1: pd.Timestamp) -> float:
 
 
 def escribir_run_aem3d(destino, cfg, met, mar, inicio, del_t, iteraciones, h_ini, hilos=1, titulo="prueba"):
-    """run_aem3d.dat de PRUEBA, con las palabras clave del ejemplo Lagoon (misma versión de AEM3D).
+    """run_aem3d.dat con las palabras clave del ejemplo Lagoon (misma versión de AEM3D).
 
-    Barotrópica: sin temperatura, salinidad ni calor (no hay perfiles iniciales medidos de la bahía).
-    Sirve para verificar la malla, la marea en las fronteras y el viento."""
+    Marea y viento con agua homogénea: temperatura y densidad activas (para que el viento entre por la
+    capa de mezcla, iclosure = 6) pero sin flujos de calor ni salinidad, y temperatura inicial uniforme
+    (no hay perfiles iniciales medidos de la bahía)."""
     v = [(f"'Bahia de Paracas - {titulo}'", "TITLE"), ("'scripts/11_malla_aem3d.py'", "ANALYST"),
-         ("'UNMSM'", "ORGANIZATION"), ("'Prueba barotropica: marea FES2022 y viento SPSO'", "COMMENT"),
+         ("'UNMSM'", "ORGANIZATION"), ("'Marea FES2022 y viento SPSO; agua homogenea'", "COMMENT"),
          ("'NONE'", "CASE_KEYWORD"),
          ("!", "Time controls"),
          (inicio, "start_date_cwr"), (f"{del_t:.1f}", "del_t"), (iteraciones, "iter_max"),
          ("!", "Simulation module controls"),
+         # En esta versión el viento entra al agua solo a través del modelo de capa de mezcla
+         # (iclosure = 6), que exige densidad. Comprobado el 2026-11-18: con idensity = 0 / iclosure = 0
+         # un viento constante de 15 m/s no cambia en nada las corrientes; con idensity = 1 / iclosure = 6
+         # produce 0,7-0,9 m/s en superficie. Sin flujos de calor (iheat_input = 0) y con temperatura
+         # inicial uniforme el agua sigue homogénea: es una corrida de marea y viento, no baroclínica.
          (0, "iheat_input"), (0, "iatmstability"), (0, "iice"), (0, "irain"), (1, "iflow"),
-         (0, "iunderflow"), (0, "ibubbler"), (0, "itemperature"), (0, "isalinity"), (0, "idensity"),
+         (0, "iunderflow"), (0, "ibubbler"), (1, "itemperature"), (0, "isalinity"), (1, "idensity"),
          (0, "ijet"), (0, "idrafttube"), (0, "icaedym"), (0, "inonhydrostatic"), (1, "icoriolis"),
          (0, "ilaketide"), (1, "allow_neumann"), (0, "iretention"), (0, "ntracer"), (0, "ndrifters"),
          (3, "idatablock"),
@@ -287,9 +293,8 @@ def escribir_run_aem3d(destino, cfg, met, mar, inicio, del_t, iteraciones, h_ini
          ("!", "Meterological sensor heights"),
          (10.0, "WIND_SPEED_HEIGHT"), (10.0, "SCALAR_HEIGHT"), (0.9, "SEDIMENT_REFLECTIVITY"),
          (0.0013, "SURF_HEAT_TRANSF_COEFF"),
-         # Sin densidad AEM3D exige iclosure = 0 ("If idensity == 0 iclosure must be 0");
-         # en una corrida baroclínica usar 6 (capa de mezcla por viento, recomendado por el manual)
-         ("!", "Turbulence modelling controls"), (0, "iclosure"),
+         # Capa de mezcla por viento (recomendado por el manual); con idensity = 0 AEM3D exige iclosure = 0
+         ("!", "Turbulence modelling controls"), (6, "iclosure"),
          ("!", "Iterative (conjugate gradient method) solution controls"),
          ("1.0e-16", "CGM_TOL"), (30, "CGM_MIN"), (1000, "CGM_MAX"),
          ("!", "Input file names"),
@@ -375,7 +380,7 @@ def main():
     p = parser_base("Malla y caso de prueba de AEM3D para la bahía de Paracas")
     p.add_argument("--correr", action="store_true", help="correr pre_aem3d y la prueba corta de AEM3D (prueba/)")
     p.add_argument("--corrida", action="store_true",
-                   help="correr pre_aem3d y la corrida completa de malla_aem3d.corrida (run/, ~40 min con 5 hilos)")
+                   help="correr pre_aem3d y la corrida completa de malla_aem3d.corrida (run/, ~2 h con 5 hilos)")
     args = p.parse_args()
     cfg = cargar_config(args.config)
     ma, ae = cfg["malla_aem3d"], cfg["aem3d"]
@@ -415,7 +420,7 @@ def main():
     escribir_bc(pre / "bathymetry" / "paracas_bc.dat", conjuntos)
     escribir_run_pre(pre / "run_pre.dat", "paracas_bathymetry.dat", "paracas_bc.dat")
 
-    # Caso de prueba: forzamiento del script 10 y run_aem3d.dat barotrópico
+    # Corrida y prueba: forzamiento del script 10 y run_aem3d.dat de marea y viento
     with open(carpeta(cfg, "carpeta_procesados") / "mes_candidato.yaml", encoding="utf-8") as f:
         mes = yaml.safe_load(f)["mes"]
     origen = ruta(ae["carpeta"])
@@ -470,7 +475,7 @@ def main():
                         "dif_max_mareografo_cm": r["dif_max_cm"]})
     if args.corrida:
         log.info(f"Corrida completa: {co['dias']} días ({int(co['dias'] * 86400 / dt)} pasos); con 5 hilos tarda "
-                 "~40 min. Se puede seguir con: tail -f " + str(relativa(caso / "run" / f"salida_{programa}.txt")))
+                 "~2 h. Se puede seguir con: tail -f " + str(relativa(caso / "run" / f"salida_{programa}.txt")))
         seg = ejecutar(programa, caso / "run")
         r = revisar(caso / "run", cfg, pr.get("arranque_h", 3), "Corrida")
         resumen.update({"corrida_programa": programa, "corrida_minutos": round(seg / 60, 1),
