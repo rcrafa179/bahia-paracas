@@ -2,8 +2,9 @@
 """09 - Presentación Beamer con los resultados.
 
 Lee los resultados de data/processed/ y escribe presentacion/resultados.tex
-(cifras y tablas como macros de LaTeX); luego compila presentacion/paracas.tex
-con latexmk. Las figuras o cifras que aún no existan aparecen como "pendiente".
+(cifras y tablas como macros de LaTeX); luego compila presentacion/paracas.tex y
+articulo/paracas_articulo.tex con latexmk. Las figuras o cifras que aún no existan aparecen como
+"pendiente".
 
 Uso:
     python scripts/09_presentacion.py [--sin-compilar]
@@ -240,7 +241,7 @@ def escribir(m: dict, destino):
 
 
 def main():
-    p = parser_base("Genera y compila la presentación Beamer")
+    p = parser_base("Genera las cifras y compila la presentación Beamer y el artículo")
     p.add_argument("--sin-compilar", action="store_true")
     args = p.parse_args()
     cfg = cargar_config(args.config)
@@ -251,13 +252,24 @@ def main():
         return
     if shutil.which("latexmk") is None:
         raise SystemExit("No se encontró latexmk (TeX Live)")
-    r = subprocess.run(["latexmk", "-pdf", "-interaction=nonstopmode", "-halt-on-error", "paracas.tex"],
-                       cwd=pres, capture_output=True, text=True)
-    if r.returncode != 0:
-        log.error(r.stdout[-3000:])
-        raise SystemExit("Error al compilar la presentación (ver presentacion/paracas.log)")
-    pdf = pres / "paracas.pdf"
-    log.info(f"Presentación compilada: {pdf.relative_to(RAIZ)} ({pdf.stat().st_size / 1e6:.1f} MB)")
+    # La presentación y el artículo usan las mismas macros de resultados.tex
+    documentos = [("Presentación", pres, "paracas.tex"),
+                  ("Artículo", RAIZ / "articulo", "paracas_articulo.tex")]
+    for nombre, cwd, tex in documentos:
+        if not (cwd / tex).exists():
+            log.warning(f"No existe {(cwd / tex).relative_to(RAIZ)}: no se compila")
+            continue
+        r = subprocess.run(["latexmk", "-pdf", "-interaction=nonstopmode", "-halt-on-error", tex],
+                           cwd=cwd, capture_output=True, text=True)
+        log_tex = (cwd / tex).with_suffix(".log")
+        if r.returncode != 0:
+            log.error(r.stdout[-3000:])
+            raise SystemExit(f"Error al compilar {tex} (ver {log_tex.relative_to(RAIZ)})")
+        pdf = (cwd / tex).with_suffix(".pdf")
+        log.info(f"{nombre}: compilado en {pdf.relative_to(RAIZ)} ({pdf.stat().st_size / 1e6:.1f} MB)")
+        desbordes = log_tex.read_text(errors="ignore").count("Overfull") if log_tex.exists() else 0
+        if desbordes:
+            log.warning(f"[sanidad] {tex}: {desbordes} avisos 'Overfull' de LaTeX: revisar el PDF")
 
 
 if __name__ == "__main__":

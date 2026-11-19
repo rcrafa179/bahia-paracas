@@ -4,7 +4,8 @@ Proyecto del curso de Oceanografía (UNMSM). Scripts en Python, reproducibles, q
 bahía de Paracas (Perú), preparan el forzamiento de marea y meteorología y corren una simulación de
 14 días con AEM3D (marea y viento). Todas las figuras se rotulan en español (PNG, 300 dpi).
 
-**Los resultados están resumidos en [RESUMEN.md](RESUMEN.md).**
+**Los resultados están resumidos en [RESUMEN.md](RESUMEN.md)** y, en formato de artículo, en
+[`articulo/paracas_articulo.pdf`](articulo/paracas_articulo.pdf).
 
 - **Dominio:** 13.60°–13.95°S, 76.15°–76.50°W
 - **Periodo meteorológico:** 2025-01-01 a 2026-10-31 (UTC)
@@ -23,6 +24,7 @@ paracas/
 │   └── processed/           # resultados intermedios (CSV, NetCDF, YAML)
 ├── figures/                 # figuras PNG
 ├── presentacion/            # presentación Beamer
+├── articulo/                # artículo (LaTeX), con las mismas cifras que la presentación
 └── scripts/
     ├── 00_fes2022_download.py
     ├── 01_era5_download.py        06_tide_harmonic_analysis.py
@@ -96,14 +98,14 @@ python scripts/07b_control_vecinos.py       # control de Pisco con Callao, San J
 # --- Batimetría ---
 python scripts/08_bathymetry_gebco.py       # necesita el recorte de GEBCO
 
-# --- Presentación ---
-python scripts/09_presentacion.py           # escribe las cifras y compila presentacion/paracas.pdf
-
 # --- AEM3D ---
 python scripts/10_exportar_aem3d.py         # archivos de forzamiento de AEM3D (necesita 04 y 07)
 python scripts/11_malla_aem3d.py --correr   # malla y caso; corre pre_aem3d y la prueba de 6 h (en prueba/)
 python scripts/11_malla_aem3d.py --corrida  # corrida de 14 días en run/ (~5 h con 5 hilos) y su revisión
 python scripts/12_resultados_aem3d.py       # análisis: marea en el mareógrafo, corrientes y viento
+
+# --- Presentación y artículo (al final: leen los resultados de todo lo anterior) ---
+python scripts/09_presentacion.py           # escribe las cifras y compila presentacion/paracas.pdf y articulo/paracas_articulo.pdf
 ```
 
 `02` y `04` deben correr antes que `07`, porque `07` usa el mes candidato (`data/processed/mes_candidato.yaml`).

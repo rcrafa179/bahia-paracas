@@ -23,6 +23,11 @@ presentacion/*.toc
 presentacion/*.fls
 presentacion/*.fdb_latexmk
 presentacion/*.vrb
+articulo/*.aux
+articulo/*.log
+articulo/*.out
+articulo/*.fls
+articulo/*.fdb_latexmk
 # Python / sistema
 __pycache__/
 *.pyc

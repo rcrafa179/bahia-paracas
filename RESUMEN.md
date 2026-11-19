@@ -1,7 +1,8 @@
 # Resumen de resultados: bahía de Paracas
 
 Resumen de lo que encontró el proyecto. Cómo correrlo, las fuentes y los detalles técnicos están en el
-[README](README.md); las figuras y tablas, en la presentación [`presentacion/paracas.pdf`](presentacion/paracas.pdf).
+[README](README.md); las figuras y tablas, en la presentación [`presentacion/paracas.pdf`](presentacion/paracas.pdf)
+y en el artículo [`articulo/paracas_articulo.pdf`](articulo/paracas_articulo.pdf).
 Las cifras salen de los archivos que generan los scripts (`data/processed/*.yaml` y
 `presentacion/resultados.tex`); si se vuelve a correr algo, este resumen hay que actualizarlo a mano.
 

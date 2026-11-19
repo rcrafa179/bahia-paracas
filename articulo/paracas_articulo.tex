@@ -1,0 +1,323 @@
+\documentclass[11pt,a4paper]{article}
+% Artículo de resultados. Las cifras vienen de ../presentacion/resultados.tex,
+% que genera scripts/09_presentacion.py a partir de data/processed/ (igual que la presentación).
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-nodecimaldot,es-noshorthands,es-tabla]{babel}
+\usepackage{lmodern}
+\usepackage[a4paper,margin=2.4cm]{geometry}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage[section]{placeins} % las figuras no pasan a la sección siguiente
+\usepackage[hidelinks]{hyperref}
+\graphicspath{{../figures/}}
+
+\newcommand{\pendiente}{\textcolor{orange}{[pendiente]}}
+\input{../presentacion/resultados.tex}
+
+% Figura con aviso si aún no existe el PNG
+\newcommand{\figura}[2]{%
+  \IfFileExists{../figures/#1.png}%
+    {\includegraphics[#2]{#1}}%
+    {\fbox{\parbox[c][3cm][c]{0.8\linewidth}{\centering\small\textcolor{orange}{Figura pendiente:}\\\texttt{\detokenize{figures/#1.png}}}}}}
+
+\title{\textbf{Viento Paracas, marea y circulación forzada por el viento en la bahía de Paracas (Perú)}\\[0.4em]\large Caracterización con observaciones, reanálisis y AEM3D}
+\author{Curso de Oceanografía\\Universidad Nacional Mayor de San Marcos}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Se caracterizan el viento, la marea y la batimetría de la bahía de Paracas y se simula su respuesta a la
+marea y al viento con el modelo hidrodinámico AEM3D. Entre \periodoMeteo, la estación METAR del aeropuerto
+de Pisco (SPSO) registra \eventosMetar{} días con viento Paracas (más de \umbralParacas~m/s entre las
+\ventanaParacas~h locales), mientras que ERA5 no registra ninguno: el reanálisis reproduce la dirección y el
+ciclo diurno, pero da \vientoFuerteEra~m/s cuando se observan \vientoFuerteObs~m/s. Una corrección por
+cuantiles iguala el número de eventos, pero no su cronología, por lo que el forzamiento usa el viento observado.
+La marea es \claseMarea{} ($F$ = \factorF), con un rango de sicigia observado de \rangoSicigiaObs~m. El registro
+del mareógrafo de Pisco tiene un error de escala ($\times$\razonError) entre mayo de 2016 y enero de 2025, que se
+detectó comparándolo con Callao, San Juan y FES2022b; corregido ese error, FES2022b reproduce la marea local.
+Una simulación de 14 días (\aemInicio{} al \aemFin) con agua homogénea reproduce la marea del mareógrafo
+(RMSE \aemRmseIoc~cm) y muestra que en las tardes con evento Paracas la corriente de superficie de la bahía
+sube de \corrCalma{} a \corrEvento~cm/s, con un retraso de \rezagoVientoCorr~h respecto del viento
+($r$ = \rVientoCorr). La corriente promediada en la vertical es unas cinco veces menor: el viento mueve una
+capa delgada de superficie.
+
+\medskip\noindent\textbf{Palabras clave:} bahía de Paracas, viento Paracas, marea, FES2022, ERA5, AEM3D.
+\end{abstract}
+
+% ===================================================================
+\section{Introducción}
+
+La bahía de Paracas, en la costa central del Perú, es una bahía somera, abierta al norte y protegida al oeste
+por la península de Paracas. Su clima está marcado por los vientos Paracas: vientos fuertes del sur y suroeste
+que se intensifican por la tarde y que pueden levantar arena y oleaje dentro de la bahía. Para estudiar cómo
+circula el agua de la bahía hacen falta tres cosas: un forzamiento atmosférico que represente bien esos
+eventos, una marea confiable en las fronteras abiertas y una batimetría razonable.
+
+Este trabajo arma esos tres componentes con datos públicos y verificados, evalúa sus errores y los usa para
+forzar una simulación con AEM3D \cite{aem3d}. Las preguntas son: (1) ¿representa ERA5 los vientos Paracas?;
+(2) ¿qué tan confiables son el mareógrafo de Pisco y el modelo global de marea FES2022b?; y (3) ¿cuánto cambia
+la corriente de la bahía durante un evento Paracas?
+
+% ===================================================================
+\section{Área de estudio y datos}
+
+El dominio cubre 13.60°--13.95°S y 76.15°--76.50°W (figura~\ref{fig:area}). Se usaron:
+
+\begin{itemize}
+  \item \textbf{ERA5} \cite{era5}, horario, en el punto más cercano a la boca de la bahía: viento a 10~m,
+    temperatura y punto de rocío a 2~m, presión, radiación de onda corta y larga, precipitación y nubosidad.
+  \item \textbf{METAR SPSO} (aeropuerto de Pisco, 13.745°S, 76.220°W), del Iowa Environmental Mesonet
+    \cite{iem}, convertido a unidades SI y con control de calidad (duplicados, valores imposibles, calmas).
+  \item \textbf{Mareógrafo de Pisco} (13.819°S, 76.252°W): datos en tiempo real del IOC \cite{ioc} y
+    datos horarios de calidad de investigación del UHSLC (estación 683) \cite{uhslc}.
+  \item \textbf{Mareógrafos vecinos} de Callao (UHSLC 093) y San Juan de Marcona (UHSLC 096), como control.
+  \item \textbf{FES2022b} \cite{fes2022}, solo elevaciones de marea oceánica, evaluado con pyTMD \cite{pytmd}.
+  \item \textbf{GEBCO\_2026} \cite{gebco}, batimetría en una malla de 15 segundos de arco.
+\end{itemize}
+
+\begin{figure}[t]
+  \centering\figura{batimetria_mapa}{width=0.75\textwidth}
+  \caption{Área de estudio: batimetría de GEBCO\_2026, polígono de la bahía, mareógrafo de Pisco y estación SPSO.}
+  \label{fig:area}
+\end{figure}
+
+% ===================================================================
+\section{Métodos}
+
+\subsection{Viento}
+Se define un \emph{evento Paracas} como un día con viento mayor de \umbralParacas~m/s entre las
+\ventanaParacas~h locales (UTC$-$5). ERA5 se comparó con SPSO hora a hora (sesgo, RMSE y correlación; para
+la dirección, la diferencia circular). Para corregir ERA5 se probó un ajuste por cuantiles
+\cite{panofsky,maraun}, evaluado con validación cruzada que deja fuera un mes cada vez. El mes candidato
+para modelar es \mesCandidato, con \eventosCandidato{} eventos según SPSO.
+
+\subsection{Marea}
+Los datos del IOC se limpiaron de picos, saltos y valores planos y se promediaron a valores horarios. El
+análisis armónico se hizo con UTide \cite{utide,ttide} sobre un año completo. Para detectar errores de
+escala se comparó, año a año, la amplitud de M$_2$ de Pisco con la de FES2022b y con la de los mareógrafos de
+Callao y San Juan, y el nivel medio mensual de Pisco con el de Callao. El residuo se analizó con el método de
+Welch \cite{welch}.
+
+\subsection{Batimetría}
+GEBCO se recortó al dominio. Dentro del polígono de la bahía se calcularon área, volumen y profundidad media.
+
+\subsection{Modelo AEM3D}
+Se armó una malla de \mallaDx~m (\mallaFilas{} $\times$ \mallaColumnas{} celdas, \mallaAgua{} columnas de agua)
+con \mallaCapas{} capas estiradas: 1~m de espesor hasta 25~m de profundidad y más gruesas hasta
+\mallaProfMax~m (figura~\ref{fig:malla}). Las fronteras norte, oeste y sur son abiertas y reciben la marea de
+FES2022b. La superficie recibe la meteorología del mes candidato, con el viento observado de SPSO. El agua es
+homogénea: sin estratificación y sin intercambio de calor con la atmósfera. En esta versión de AEM3D el
+viento solo transfiere momento al agua a través del modelo de capa de mezcla, por lo que se activó la
+densidad y la temperatura con temperatura uniforme. La versión de demostración limita la simulación a 14 días:
+se simuló del \aemInicio{} al \aemFin{} (hora local), con paso de 30~s, y se descartaron las 3 primeras horas.
+
+\begin{figure}[t]
+  \centering\figura{aem3d_malla}{width=0.85\textwidth}
+  \caption{Malla de AEM3D: profundidad de cada celda y espesor de las capas.}
+  \label{fig:malla}
+\end{figure}
+
+% ===================================================================
+\section{Resultados}
+
+\subsection{Viento: ERA5 subestima los eventos Paracas}
+
+El viento es del S--SO, con un fuerte ciclo diurno: máximo por la tarde y mínimo de madrugada. En promedio, ERA5
+se parece a SPSO (tabla~\ref{tab:validacion}), pero no reproduce los extremos: cuando SPSO pasa de 10~m/s, ERA5
+da en promedio \vientoFuerteEra~m/s. En todo el periodo, SPSO registra \eventosMetar{} días con evento y
+ERA5, \eventosEra{} (figura~\ref{fig:eventos}).
+
+\begin{table}[h]
+  \centering\small
+  \caption{ERA5 frente a SPSO, \periodoMeteo. Sesgo = ERA5 $-$ observado.}
+  \label{tab:validacion}
+  \begin{tabular}{@{}lrrrr@{}}
+    \toprule
+    Variable & $n$ & Sesgo & RMSE & $r$ \\
+    \midrule
+    \tablaValidacion
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+La corrección por cuantiles iguala el total de eventos (\eventosQmTotal{} frente a \eventosMetar), pero los
+coloca en los meses equivocados: la correlación entre los conteos mensuales es \corrEventosQm{}, y en
+\mesCandidato{} da \eventosQmMes{} evento en lugar de \eventosCandidato. Por eso el forzamiento usa el viento
+observado de SPSO (\horasSpso{} de \horasForzamiento~h; las \horasRellenas~h faltantes se rellenan con ERA5
+corregido).
+
+\begin{figure}[t]
+  \centering\figura{validacion_eventos_paracas_mensual}{width=\textwidth}
+  \caption{Días con evento Paracas por mes según SPSO y ERA5.}
+  \label{fig:eventos}
+\end{figure}
+
+\subsection{Marea: un error de escala en el mareógrafo de Pisco}
+
+La M$_2$ de Pisco medida entre \aniosError{} es \razonError{} veces mayor que la de \aniosBuenos{}, mientras que
+en Callao y San Juan no cambia. FES2022b coincide con la M$_2$ de Callao y San Juan y con la del Pisco de \aniosBuenos. En 2022,
+la razón entre la amplitud de FES2022b y la observada es \razonFesCallao{} en Callao y \razonFesSanJuan{} en
+San Juan, pero \razonFesPisco{} en Pisco, y lo mismo ocurre en todas las constituyentes
+(figura~\ref{fig:vecinos}). El salto aparece justo después de un hueco de abril de 2016 y sigue
+en enero de 2025, de modo que se trata de un error de escala del registro y no de un cambio de la marea. Por eso
+la serie principal es el IOC de \ventanaPrincipal{} (\completitudPrincipal~\% de horas válidas), con UHSLC
+\anioUhslc{} como referencia; las dos coinciden en M$_2$ (\dAmMdosIoc~cm y \dgMdosIoc°).
+
+\begin{figure}[t]
+  \centering\figura{marea_control_vecinos}{width=\textwidth}
+  \caption{Control con mareógrafos vecinos. Izquierda: amplitud anual de M$_2$ en Callao, Pisco y San Juan (UHSLC), con la de FES2022 en cada estación (líneas discontinuas) y la del IOC 2025--26 en Pisco (rombo); en rosa, los años de Pisco que se apartan más de un 10~\% de sus vecinos. Derecha: amplitud de FES2022 dividida por la observada en 2022.}
+  \label{fig:vecinos}
+\end{figure}
+
+El nivel medio mensual de Pisco sube unos \rangoNivelMedio~cm entre fines de 2025 y mediados de 2026. Callao
+muestra la misma subida ($r$ = \corrNivelMedio, diferencia máxima \difNivelMedio~cm), así que es una señal
+oceanográfica regional y no una deriva del sensor (figura~\ref{fig:nivelmedio}).
+
+\begin{figure}[t]
+  \centering\figura{marea_nivel_medio_pisco_callao}{width=0.85\textwidth}
+  \caption{Nivel medio mensual en Pisco (IOC) y Callao.}
+  \label{fig:nivelmedio}
+\end{figure}
+
+La marea es \claseMarea{} ($F = (K_1+O_1)/(M_2+S_2)$ = \factorF{} \cite{pugh}; tabla~\ref{tab:armonicos}). Los rangos
+observados de sicigia y cuadratura son \rangoSicigiaObs{} y \rangoCuadraturaObs~m, mayores que los que dan
+solo M$_2$ y S$_2$ (\rangoSicigia{} y \rangoCuadratura~m) por el aporte diurno; el rango máximo es
+\rangoMaximo~m. Los armónicos explican el \varExplicada~\% de la varianza y el residuo tiene un RMS de
+\rmsResiduo~cm. FES2022b reproduce la M$_2$ del mareógrafo ($\Delta A$ = \dAmMdosFes~cm,
+$\Delta g$ = \dgMdosFes°) y, en \mesCandidato, el RMSE frente al IOC corregido baja de \rmseCandSin{} a
+\rmseCandCorr~cm al aplicar el factor \factorCandidato.
+
+\begin{table}[h]
+  \centering\small
+  \caption{Constituyentes principales, IOC \ventanaPrincipal. Intervalos del 95~\%; fase de Greenwich (UTC).}
+  \label{tab:armonicos}
+  \begin{tabular}{@{}lrrrr@{}}
+    \toprule
+    Const. & Periodo (h) & $A$ (cm) & $g$ (°) & SNR \\
+    \midrule
+    \tablaArmonicos
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Batimetría}
+Dentro del polígono, la bahía tiene \areaBahia~km$^2$, \volBahia~hm$^3$, una profundidad media de
+\profMedia~m y una máxima de \profMax~m.
+
+\subsection{Simulación con AEM3D}
+
+\paragraph{Marea.} AEM3D transmite la marea de las fronteras al interior de la bahía sin deformarla: en la celda
+del mareógrafo, el RMSE frente a FES2022b es \aemRmseFes~cm. Frente al IOC observado y corregido, el RMSE es
+\aemRmseIoc~cm ($r$ = \aemRIoc, razón de amplitudes \aemRazonIoc), igual que el de FES2022b solo
+(\fesRmseIoc~cm; figura~\ref{fig:aemmarea}).
+
+\begin{figure}[t]
+  \centering\figura{aem3d_marea_mareografo}{width=\textwidth}
+  \caption{Nivel del mar en el mareógrafo de Pisco: IOC observado y corregido, FES2022b y AEM3D.}
+  \label{fig:aemmarea}
+\end{figure}
+
+\paragraph{Corrientes.} La tabla~\ref{tab:corrientes} compara las tardes (12 a 18~h) con y sin evento Paracas.
+En las tardes con evento, la corriente media de superficie es un 50~\% mayor y se dirige hacia el NE
+(\dirEvento°), en el sentido general del viento del S--SO (figura~\ref{fig:corrientes}). La rapidez de la corriente sigue al
+viento con \rezagoVientoCorr~h de retraso ($r$ = \rVientoCorr; figura~\ref{fig:vientocorriente}). Promediada
+en la vertical, la corriente es unas cinco veces menor que en la superficie. La velocidad máxima de superficie
+en todo el dominio es de \aemVelMax~cm/s, en mar abierto.
+
+\begin{table}[h]
+  \centering\small
+  \caption{Corrientes medias dentro del polígono de la bahía, tardes de 12 a 18~h.}
+  \label{tab:corrientes}
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    & Superficie, media & Superficie, rapidez instantánea & Promedio vertical \\
+    & (cm/s) & (cm/s) & (cm/s) \\
+    \midrule
+    Con evento Paracas & \corrEvento & \rapEvento & \corrVertEvento \\
+    Sin evento & \corrCalma & \rapCalma & \corrVertCalma \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[t]
+  \centering\figura{aem3d_corrientes_eventos}{width=\textwidth}
+  \caption{Corriente media de superficie simulada en las tardes con y sin evento Paracas. Línea roja: polígono de la bahía.}
+  \label{fig:corrientes}
+\end{figure}
+
+\begin{figure}[t]
+  \centering\figura{aem3d_viento_corriente}{width=\textwidth}
+  \caption{Viento de SPSO (forzamiento) y rapidez media de la corriente de superficie en la bahía. En rosa, las tardes con evento Paracas.}
+  \label{fig:vientocorriente}
+\end{figure}
+
+% ===================================================================
+\section{Discusión}
+
+\paragraph{El forzamiento atmosférico.} La subestimación de ERA5 es consistente con su resolución
+(unos 30~km): el reanálisis no resuelve la canalización local del viento entre la península y el continente.
+La corrección por cuantiles arregla la distribución de velocidades, pero no puede crear eventos en los días en
+que ERA5 no tiene la señal. Para simular eventos concretos hace falta, por ahora, el viento observado. SPSO
+está en tierra, así que sobre el agua el viento podría ser algo mayor y las corrientes simuladas serían una
+estimación conservadora.
+
+\paragraph{La calidad del registro de marea.} El error de escala de Pisco no se nota mirando solo la serie:
+apareció al comparar con FES2022b y con mareógrafos vecinos. Sin ese control, el análisis armónico habría dado
+amplitudes un 35~\% mayores y se habría concluido, erróneamente, que FES2022b subestima la marea local.
+
+\paragraph{La respuesta de la bahía.} Con agua homogénea, el viento acelera sobre todo una capa delgada de
+superficie, con flujo de retorno debajo. Con una termoclina, el momento del viento quedaría atrapado en una capa
+de mezcla aún más delgada, por lo que la corriente de superficie probablemente sería mayor. La corrida baroclínica
+necesita perfiles iniciales de temperatura y salinidad, y perfiles en las fronteras, que todavía no se tienen.
+
+\paragraph{Limitaciones.} La versión de demostración de AEM3D limita la simulación a 14 días, por lo que quedan
+fuera los eventos del 7 al 9 de enero de 2025. GEBCO es grueso dentro de la bahía; la fusión con los sondajes de
+la carta náutica de la DHN está preparada pero sin datos.
+
+% ===================================================================
+\section{Conclusiones}
+
+\begin{enumerate}
+  \item El viento de la bahía es del S--SO, con fuerte ciclo diurno; los vientos Paracas ocurren por la tarde.
+    ERA5 reproduce la dirección y el ciclo, pero no la intensidad de los eventos (\eventosEra{} frente a
+    \eventosMetar{} días), y la corrección por cuantiles no recupera su cronología.
+  \item La marea de Pisco es \claseMarea, con M$_2$ = \ampMdos~cm y K$_1$ = \ampKuno~cm. El registro tiene un
+    error de escala de $\times$\razonError{} entre 2016 y enero de 2025; corregido, FES2022b reproduce la marea
+    local y sirve como forzamiento de frontera.
+  \item En AEM3D, la corriente de superficie de la bahía sube de \corrCalma{} a \corrEvento~cm/s en las tardes
+    con evento Paracas y responde al viento en \rezagoVientoCorr~h. El viento actúa sobre una capa delgada de
+    superficie.
+\end{enumerate}
+
+\section*{Disponibilidad del código y los datos}
+Todos los scripts, la configuración y la presentación están en el repositorio del proyecto. Los datos se
+descargan o regeneran con los scripts (ver \texttt{README.md}).
+
+% ===================================================================
+\begin{thebibliography}{99}
+\small
+\bibitem{era5} Hersbach, H., et al. (2020). The ERA5 global reanalysis. \emph{Q. J. R. Meteorol. Soc.}, 146, 1999--2049. doi:10.1002/qj.3803
+\bibitem{iem} Iowa Environmental Mesonet. ASOS/METAR, estación SPSO. Iowa State University.
+\bibitem{ioc} VLIZ; IOC. Sea level station monitoring facility. doi:10.14284/482
+\bibitem{uhslc} Caldwell, P. C., Merrifield, M. A., Thompson, P. R. (2015). Joint Archive for Sea Level holdings (UHSLC). NOAA NCEI. doi:10.7289/V5V40S7W
+\bibitem{fes2022} AVISO. FES2022b, elevaciones de marea oceánica. doi:10.24400/527896/a01-2024.004
+\bibitem{gebco} GEBCO Compilation Group (2026). GEBCO\_2026 Grid. doi:10.5285/4f68d5c7-45eb-f999-e063-7086abc036fa
+\bibitem{utide} Codiga, D. L. (2011). Unified tidal analysis and prediction using the UTide Matlab functions. GSO Tech. Rep. 2011-01, URI.
+\bibitem{ttide} Pawlowicz, R., Beardsley, B., Lentz, S. (2002). Classical tidal harmonic analysis including error estimates in MATLAB using T\_TIDE. \emph{Comput. Geosci.}, 28, 929--937.
+\bibitem{pytmd} Sutterley, T. C., et al. pyTMD: Python-based tidal prediction software (v3.1).
+\bibitem{pugh} Pugh, D., Woodworth, P. (2014). \emph{Sea-Level Science}. Cambridge University Press.
+\bibitem{welch} Welch, P. D. (1967). The use of fast Fourier transform for the estimation of power spectra. \emph{IEEE Trans. Audio Electroacoust.}, 15(2), 70--73.
+\bibitem{panofsky} Panofsky, H. A., Brier, G. W. (1968). \emph{Some Applications of Statistics to Meteorology}. Penn State University.
+\bibitem{maraun} Maraun, D. (2016). Bias correcting climate change simulations. \emph{Curr. Clim. Change Rep.}, 2, 211--220.
+\bibitem{aem3d} Hodges, B., Dallimore, C. \emph{AEM3D User Manual} y \emph{Science Manual}. Hydronumerics.
+\end{thebibliography}
+
+\end{document}
