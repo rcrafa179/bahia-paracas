@@ -26,6 +26,8 @@ from __future__ import annotations
 import json
 import warnings
 
+import matplotlib.dates as mdates
+import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -181,6 +183,22 @@ def main():
     res["corrientes_bahia"] = resumen_c
     res["rapidez_instantanea_bahia_cms"] = {k: round(100 * float(v), 2) for k, v in inst.items()}
 
+    # Corriente promediada en la vertical (sheet_avg): si el viento mueve solo una capa delgada de superficie,
+    # el promedio vertical es mucho menor que la corriente de superficie (con flujo de retorno abajo).
+    arch_avg = caso / "run" / "ncfiles" / "sheet_avg.nc"
+    if arch_avg.exists():
+        sa = leer_salidas(arch_avg)
+        prom = {}
+        for nombre, sel in (("tardes con evento", sel_ev), ("tardes sin evento", sel_calma)):
+            if sel.any():
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    ue, vn = np.nanmean(sa["este"][sel], axis=0), np.nanmean(sa["norte"][sel], axis=0)
+                prom[nombre] = round(100 * float(np.nanmean(np.hypot(ue, vn)[bahia])), 2)
+        log.info("Corriente media promediada en la vertical en la bahía: "
+                 + ", ".join(f"{n} {v} cm/s" for n, v in prom.items()))
+        res["corriente_vertical_media_bahia_cms"] = prom
+
     # --- 3. Viento y corriente ------------------------------------------------------------------
     ok = valido & viento.notna().values & v_bahia.notna().values
     r0 = float(np.corrcoef(viento[ok], v_bahia[ok])[0, 1])
@@ -203,6 +221,14 @@ def main():
 
 
 # ---------------------------------------------------------------------------
+def ejes_fecha(ax):
+    """Una marca cada dos días, con formato corto, para que no se encimen las fechas."""
+    ax.xaxis.set_major_locator(mdates.DayLocator(interval=2))
+    meses = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(
+        lambda x, _: (lambda d: f"{d.day} {meses[d.month - 1]}")(mdates.num2date(x))))
+
+
 def fig_marea(t, mod, fes, ioc, m_fes, m_ioc, factor, figdir):
     fig, ax = plt.subplots(figsize=(13, 4.5))
     ax.plot(ioc.index, ioc, ".", color="0.5", ms=3, label=f"IOC observado ×{factor:.3f} (error de escala corregido)")
@@ -213,6 +239,7 @@ def fig_marea(t, mod, fes, ioc, m_fes, m_ioc, factor, figdir):
     ax.set_title(f"Marea en el mareógrafo de Pisco: AEM3D − FES RMSE {m_fes['rmse_cm']} cm; "
                  f"AEM3D − IOC RMSE {m_ioc['rmse_cm']} cm (r = {m_ioc['r']})")
     ax.legend(fontsize=8, loc="upper right", ncol=3)
+    ejes_fecha(ax)
     guardar(fig, figdir, "aem3d_marea_mareografo", log)
 
 
@@ -235,13 +262,15 @@ def fig_corrientes(s, campos, bahia, pol, figdir):
         ax.quiver(lon[sub], lat[sub], ue[sub], vn[sub], scale=vmax * 25, width=0.003, color="k")
         xs, ys = pol.exterior.xy
         ax.plot(xs, ys, "r--", lw=1, label="Polígono de la bahía")
-        ax.set_title(f"Corriente de superficie media: {n}")
+        ax.set_title(n.capitalize())
+        ax.xaxis.set_major_locator(mticker.MaxNLocator(4))
         ax.set_xlabel("Longitud (°)")
         ax.set_aspect(1 / np.cos(np.deg2rad(np.nanmean(lat[zona]))))
     axs[0].set_ylabel("Latitud (°)")
     axs[0].legend(fontsize=8, loc="lower left")
     fig.colorbar(im, ax=axs, label="Rapidez de la corriente media (cm/s)", shrink=0.85)
-    fig.suptitle("AEM3D (marea y viento): corrientes de superficie en la bahía de Paracas, tardes de 12 a 18 h",
+    fig.suptitle("AEM3D (marea y viento): corriente de superficie media en la bahía de Paracas,\n"
+                 "tardes de 12 a 18 h con y sin evento Paracas",
                  fontweight="bold")
     guardar(fig, figdir, "aem3d_corrientes_eventos", log)
 
@@ -260,6 +289,7 @@ def fig_viento(t, viento, v_bahia, sel_ev, valido, vc, figdir):
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
     ax.legend(h1 + h2, l1 + l2, fontsize=8, loc="upper left", ncol=2)
+    ejes_fecha(ax)
     guardar(fig, figdir, "aem3d_viento_corriente", log)
 
 

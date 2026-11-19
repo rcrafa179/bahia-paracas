@@ -290,6 +290,25 @@
   \end{itemize}
 \end{frame}
 
+\begin{frame}{AEM3D, \aemInicio{} al \aemFin: marea en el mareógrafo}
+  \centering\figura{aem3d_marea_mareografo}{width=\textwidth,height=0.5\textheight,keepaspectratio}\\[0.2em]
+  \footnotesize
+  \begin{itemize}
+    \item AEM3D transmite la marea de las fronteras al interior de la bahía: frente a FES2022, RMSE \aemRmseFes~cm.
+    \item Frente al IOC observado (corregido por el error de escala): RMSE \aemRmseIoc~cm, $r$ = \aemRIoc, razón de amplitudes \aemRazonIoc{} (FES frente al IOC: \fesRmseIoc~cm).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{AEM3D: corrientes de superficie y viento Paracas}
+  \centering\figura{aem3d_corrientes_eventos}{width=\textwidth,height=0.5\textheight,keepaspectratio}\\[0.2em]
+  \footnotesize
+  \begin{itemize}
+    \item Tardes con evento: corriente media \corrEvento~cm/s hacia \dirEvento$^\circ$ (rapidez instantánea \rapEvento~cm/s); tardes sin evento: \corrCalma~cm/s (\rapCalma~cm/s).
+    \item Promediada en la vertical la corriente es mucho menor (\corrVertEvento{} y \corrVertCalma~cm/s): el viento mueve una capa delgada de superficie.
+    \item Viento y rapidez en la bahía: $r$ = \rVientoCorr{} con \rezagoVientoCorr~h de rezago. Agua homogénea (sin estratificación): la respuesta real puede diferir.
+  \end{itemize}
+\end{frame}
+
 % ===================================================================
 \section{Batimetría}
 
@@ -315,7 +334,7 @@
 \section{Conclusiones}
 
 \begin{frame}{Conclusiones y limitaciones}
-  \small
+  \footnotesize
   \begin{itemize}
     \item Viento dominante del S--SO con un fuerte ciclo diurno; los vientos Paracas se concentran por la tarde.
     \item ERA5 reproduce la dirección y el ciclo diurno, pero \textbf{subestima la intensidad} de los eventos (\eventosEra{} frente a \eventosMetar{} días con evento).
@@ -323,6 +342,7 @@
     \item El registro de Pisco tiene un error de escala ($\times$\razonError) entre 2016 y enero de 2025, detectado con Callao, San Juan y FES2022; se analizó el IOC \ventanaPrincipal{} con referencia UHSLC \anioUhslc.
     \item FES2022 reproduce la marea de Pisco ($\Delta A_{M_2}$ = \dAmMdosFes~cm, $\Delta g_{M_2}$ = \dgMdosFes$^\circ$): el forzamiento de frontera es confiable.
     \item ERA5 corregido por cuantiles iguala la intensidad pero no la cronología de los eventos: el forzamiento usa el viento de SPSO (estación en tierra: sobre el agua puede ser algo mayor).
+    \item AEM3D (\aemInicio{} al \aemFin, marea y viento) reproduce la marea de Pisco (RMSE \aemRmseIoc~cm); en tardes con evento la corriente de superficie de la bahía sube de \corrCalma{} a \corrEvento~cm/s.
     \item Pendiente: la corrida baroclínica del mes (perfiles iniciales de temperatura y salinidad) y la batimetría de detalle (carta DHN).
   \end{itemize}
 \end{frame}

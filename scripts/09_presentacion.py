@@ -108,6 +108,31 @@ def macros(cfg, proc) -> dict[str, str]:
                  ("pruebaDifMareografo", "dif_max_mareografo_cm")]:
         m[k] = str(ma[c]) if ma.get(c) is not None else PEND
 
+    # Resultados de la corrida de AEM3D (12)
+    ra = leer_yaml(proc / "resultados_aem3d.yaml") or {}
+    mg_ = ra.get("mareografo", {})
+    m["aemInicio"] = pd.Timestamp(ra["inicio"]).strftime("%d/%m") if "inicio" in ra else PEND
+    m["aemFin"] = pd.Timestamp(ra["fin"]).strftime("%d/%m/%Y") if "fin" in ra else PEND
+    m["aemRmseFes"] = fmt(mg_.get("aem3d_vs_fes", {}).get("rmse_cm"), 1)
+    m["aemRmseIoc"] = fmt(mg_.get("aem3d_vs_ioc", {}).get("rmse_cm"), 1)
+    m["aemRIoc"] = fmt(mg_.get("aem3d_vs_ioc", {}).get("r"), 3)
+    m["aemRazonIoc"] = fmt(mg_.get("aem3d_vs_ioc", {}).get("razon_amplitud"), 2)
+    m["fesRmseIoc"] = fmt(mg_.get("fes_vs_ioc", {}).get("rmse_cm"), 1)
+    cb = ra.get("corrientes_bahia", {})
+    m["corrEvento"] = fmt(cb.get("tardes con evento", {}).get("vel_media_cms"), 1)
+    m["corrCalma"] = fmt(cb.get("tardes sin evento", {}).get("vel_media_cms"), 1)
+    m["dirEvento"] = fmt(cb.get("tardes con evento", {}).get("hacia_grados"), 0)
+    ri = ra.get("rapidez_instantanea_bahia_cms", {})
+    m["rapEvento"] = fmt(ri.get("tardes con evento"), 1)
+    m["rapCalma"] = fmt(ri.get("tardes sin evento"), 1)
+    vc = ra.get("viento_corriente", {})
+    m["rVientoCorr"] = fmt(vc.get("r_max"), 2)
+    m["rezagoVientoCorr"] = str(vc.get("rezago_h", PEND))
+    m["aemVelMax"] = fmt(ra.get("vel_max_superficie_cms"), 0)
+    cv = ra.get("corriente_vertical_media_bahia_cms", {})
+    m["corrVertEvento"] = fmt(cv.get("tardes con evento"), 1)
+    m["corrVertCalma"] = fmt(cv.get("tardes sin evento"), 1)
+
     # Marea
     sel = leer_yaml(proc / "seleccion_marea.yaml") or {}
     m["seriePrincipal"] = str(sel.get("principal", PEND)).upper()

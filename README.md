@@ -100,7 +100,7 @@ python scripts/09_presentacion.py           # escribe las cifras y compila prese
 # --- AEM3D ---
 python scripts/10_exportar_aem3d.py         # archivos de forzamiento de AEM3D (necesita 04 y 07)
 python scripts/11_malla_aem3d.py --correr   # malla y caso; corre pre_aem3d y la prueba de 6 h (en prueba/)
-python scripts/11_malla_aem3d.py --corrida  # corrida de 14 días en run/ (~2 h con 5 hilos) y su revisión
+python scripts/11_malla_aem3d.py --corrida  # corrida de 14 días en run/ (~5 h con 5 hilos) y su revisión
 python scripts/12_resultados_aem3d.py       # análisis: marea en el mareógrafo, corrientes y viento
 ```
 
@@ -240,7 +240,7 @@ se midió:
 
 Usar más de 5 hilos no acelera, porque los núcleos lentos frenan a los demás. El resultado con 5 hilos
 coincide con el de 1 hilo: el nivel difiere como mucho 0,03 mm. Con la capa de mezcla activa cada paso
-cuesta unas 3 veces más (prueba de 6 h: 123 s con 5 hilos), así que la corrida de 14 días tarda ~2 h.
+cuesta unas 3 veces más (prueba de 6 h: 123 s con 5 hilos), y la corrida de 14 días tardó 303 min (~5 h, más de lo que sugiere extrapolar la prueba).
 
 Para correrla:
 - **Con el script:** `python scripts/11_malla_aem3d.py --corrida`. Usa `caffeinate` para que el Mac no

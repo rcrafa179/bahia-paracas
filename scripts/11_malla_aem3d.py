@@ -28,7 +28,7 @@ estiradas hasta el fondo real.
 Uso:
     python scripts/11_malla_aem3d.py              # arma el caso
     python scripts/11_malla_aem3d.py --correr     # además corre pre_aem3d y la prueba corta (en prueba/)
-    python scripts/11_malla_aem3d.py --corrida    # además corre la corrida completa de run/ (~40 min)
+    python scripts/11_malla_aem3d.py --corrida    # además corre la corrida completa de run/ (~5 h)
 """
 from __future__ import annotations
 
@@ -380,7 +380,7 @@ def main():
     p = parser_base("Malla y caso de prueba de AEM3D para la bahía de Paracas")
     p.add_argument("--correr", action="store_true", help="correr pre_aem3d y la prueba corta de AEM3D (prueba/)")
     p.add_argument("--corrida", action="store_true",
-                   help="correr pre_aem3d y la corrida completa de malla_aem3d.corrida (run/, ~2 h con 5 hilos)")
+                   help="correr pre_aem3d y la corrida completa de malla_aem3d.corrida (run/, ~5 h con 5 hilos)")
     args = p.parse_args()
     cfg = cargar_config(args.config)
     ma, ae = cfg["malla_aem3d"], cfg["aem3d"]
@@ -475,7 +475,7 @@ def main():
                         "dif_max_mareografo_cm": r["dif_max_cm"]})
     if args.corrida:
         log.info(f"Corrida completa: {co['dias']} días ({int(co['dias'] * 86400 / dt)} pasos); con 5 hilos tarda "
-                 "~2 h. Se puede seguir con: tail -f " + str(relativa(caso / "run" / f"salida_{programa}.txt")))
+                 "~5 h. Se puede seguir con: tail -f " + str(relativa(caso / "run" / f"salida_{programa}.txt")))
         seg = ejecutar(programa, caso / "run")
         r = revisar(caso / "run", cfg, pr.get("arranque_h", 3), "Corrida")
         resumen.update({"corrida_programa": programa, "corrida_minutos": round(seg / 60, 1),
