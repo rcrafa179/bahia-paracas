@@ -1,8 +1,10 @@
 # Caracterización de la bahía de Paracas: meteorología, marea y batimetría
 
 Proyecto del curso de Oceanografía (UNMSM). Scripts en Python, reproducibles, que caracterizan la
-bahía de Paracas (Perú) y preparan el forzamiento de marea y meteorología para una futura simulación
-con AEM3D. Todas las figuras se rotulan en español (PNG, 300 dpi).
+bahía de Paracas (Perú), preparan el forzamiento de marea y meteorología y corren una simulación de
+14 días con AEM3D (marea y viento). Todas las figuras se rotulan en español (PNG, 300 dpi).
+
+**Los resultados están resumidos en [RESUMEN.md](RESUMEN.md).**
 
 - **Dominio:** 13.60°–13.95°S, 76.15°–76.50°W
 - **Periodo meteorológico:** 2025-01-01 a 2026-10-31 (UTC)
