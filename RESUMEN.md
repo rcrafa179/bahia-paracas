@@ -14,8 +14,8 @@ Todo se guarda en UTC; la hora local (UTC−5) se usa solo para el ciclo diurno 
 - **Régimen:** domina el viento del S–SO, con un ciclo diurno fuerte. Los vientos Paracas
   (> 10 m/s entre las 12 y las 18 h locales) se concentran por la tarde.
 - **Eventos Paracas:** METAR SPSO registra **101 días con evento** en todo el periodo; ERA5, **ninguno**.
-  Enero de 2025 tiene 10 (empata con marzo de 2025). Se eligió enero porque es el único de los dos con
-  datos de marea del IOC que pasan el control de calidad.
+  Enero de 2025 tiene 10 (empata con marzo de 2025). Se eligió enero porque en marzo no hay datos del
+  mareógrafo IOC; los de enero tienen el error de escala (ver Marea), pero corregidos sirven para validar.
 - **ERA5 frente a SPSO:** el viento medio coincide (sesgo +0,2 m/s, r = 0,59), pero cuando SPSO pasa de
   10 m/s, ERA5 da en promedio 6,4 m/s frente a 11,0 m/s observados. ERA5 **subestima la intensidad de los
   eventos**, aunque reproduce la dirección y el ciclo diurno.
@@ -59,7 +59,7 @@ la fusión con los sondajes de la carta DHN está preparada pero sin datos.
 - Malla de 250 m (158 × 153 celdas, 14 363 columnas de agua) con 50 capas estiradas: 1 m hasta 25 m de
   profundidad, más gruesas hasta 171 m.
 - Fronteras abiertas al norte, oeste y sur, con la marea de FES2022.
-- Viento y meteorología de SPSO.
+- Viento de SPSO; temperatura, humedad, radiación y presión de ERA5 en la boca de la bahía.
 - Agua homogénea: sin estratificación ni intercambio de calor.
 
 **Corrida:** 14 días, del 18 al 31 de enero de 2025 (hora local); 7 de los 10 eventos del mes caen dentro.

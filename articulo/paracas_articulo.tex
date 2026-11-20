@@ -97,7 +97,8 @@ Se define un \emph{evento Paracas} como un día con viento mayor de \umbralParac
 \ventanaParacas~h locales (UTC$-$5). ERA5 se comparó con SPSO hora a hora (sesgo, RMSE y correlación; para
 la dirección, la diferencia circular). Para corregir ERA5 se probó un ajuste por cuantiles
 \cite{panofsky,maraun}, evaluado con validación cruzada que deja fuera un mes cada vez. El mes candidato
-para modelar es \mesCandidato, con \eventosCandidato{} eventos según SPSO.
+para modelar es \mesCandidato, con \eventosCandidato{} eventos según SPSO; empata con marzo de 2025, pero en
+marzo no hay datos del mareógrafo IOC para validar la marea.
 
 \subsection{Marea}
 Los datos del IOC se limpiaron de picos, saltos y valores planos y se promediaron a valores horarios. El
@@ -113,7 +114,8 @@ GEBCO se recortó al dominio. Dentro del polígono de la bahía se calcularon á
 Se armó una malla de \mallaDx~m (\mallaFilas{} $\times$ \mallaColumnas{} celdas, \mallaAgua{} columnas de agua)
 con \mallaCapas{} capas estiradas: 1~m de espesor hasta 25~m de profundidad y más gruesas hasta
 \mallaProfMax~m (figura~\ref{fig:malla}). Las fronteras norte, oeste y sur son abiertas y reciben la marea de
-FES2022b. La superficie recibe la meteorología del mes candidato, con el viento observado de SPSO. El agua es
+FES2022b. La superficie recibe el viento observado de SPSO y la temperatura, humedad, radiación y presión de ERA5 en la
+boca de la bahía. El agua es
 homogénea: sin estratificación y sin intercambio de calor con la atmósfera. En esta versión de AEM3D el
 viento solo transfiere momento al agua a través del modelo de capa de mezcla, por lo que se activó la
 densidad y la temperatura con temperatura uniforme. La versión de demostración limita la simulación a 14 días:

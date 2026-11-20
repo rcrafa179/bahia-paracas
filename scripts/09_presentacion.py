@@ -119,6 +119,8 @@ def macros(cfg, proc) -> dict[str, str]:
     m["aemRIoc"] = fmt(mg_.get("aem3d_vs_ioc", {}).get("r"), 3)
     m["aemRazonIoc"] = fmt(mg_.get("aem3d_vs_ioc", {}).get("razon_amplitud"), 2)
     m["fesRmseIoc"] = fmt(mg_.get("fes_vs_ioc", {}).get("rmse_cm"), 1)
+    m["fesRIoc"] = fmt(mg_.get("fes_vs_ioc", {}).get("r"), 3)
+    m["aemRFes"] = fmt(mg_.get("aem3d_vs_fes", {}).get("r"), 2)
     cb = ra.get("corrientes_bahia", {})
     m["corrEvento"] = fmt(cb.get("tardes con evento", {}).get("vel_media_cms"), 1)
     m["corrCalma"] = fmt(cb.get("tardes sin evento", {}).get("vel_media_cms"), 1)
@@ -133,6 +135,23 @@ def macros(cfg, proc) -> dict[str, str]:
     cv = ra.get("corriente_vertical_media_bahia_cms", {})
     m["corrVertEvento"] = fmt(cv.get("tardes con evento"), 1)
     m["corrVertCalma"] = fmt(cv.get("tardes sin evento"), 1)
+    ev_c, ev_s = cb.get("tardes con evento", {}).get("vel_media_cms"), cb.get("tardes sin evento", {}).get(
+        "vel_media_cms")
+    m["aumentoEvento"] = fmt(100 * (ev_c / ev_s - 1), 0) if ev_c and ev_s else PEND
+    m["aemDias"] = str(ma.get("corrida_dias", PEND))
+    m["aemMinutos"] = fmt(ma.get("corrida_minutos"), 0)
+    m["aemHilos"] = str(cfg.get("malla_aem3d", {}).get("hilos", PEND))
+    m["horasDirEra"] = str(vf.get("direcciones_era5", PEND))
+    # Días con evento Paracas dentro de la corrida (viento del forzamiento, en hora local)
+    fz = leer_csv(proc / "forzamiento_meteo_mes_candidato.csv", parse_dates=["tiempo_utc"])
+    if fz is not None and "inicio" in ra:
+        loc = fz.tiempo_utc + pd.Timedelta(hours=cfg["proyecto"]["zona_horaria_local"])
+        en_ventana = loc.dt.hour.between(vp["hora_local_inicio"], vp["hora_local_fin"])
+        en_corrida = (loc >= pd.Timestamp(ra["inicio"]).normalize()) & (loc < pd.Timestamp(ra["fin"]))
+        dias = loc[en_ventana & en_corrida & (fz.vel_ms > vp["umbral_ms"])].dt.date
+        m["eventosCorrida"] = str(dias.nunique())
+    else:
+        m["eventosCorrida"] = PEND
 
     # Marea
     sel = leer_yaml(proc / "seleccion_marea.yaml") or {}
