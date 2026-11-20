@@ -23,7 +23,7 @@ paracas/
 │   ├── raw/                 # descargas (no van al repositorio)
 │   └── processed/           # resultados intermedios (CSV, NetCDF, YAML)
 ├── figures/                 # figuras PNG
-├── presentacion/            # presentación Beamer
+├── presentacion/            # presentación Beamer (15 min: 12 diapositivas + respaldo)
 ├── articulo/                # artículo (LaTeX), con las mismas cifras que la presentación
 └── scripts/
     ├── 00_fes2022_download.py
@@ -268,7 +268,7 @@ Medido al terminar (periodo completo, sin FES2022b ni GEBCO):
 | IOC (1 min, comprimido) + UHSLC + METAR | 9,8 MB |
 | `data/processed/` | 13 MB |
 | `figures/` | 10 MB |
-| `presentacion/` (PDF incluido) | 8,2 MB |
+| `presentacion/` (PDF incluido) | 9,5 MB |
 | **Total del repositorio** | **≈ 51 MB** |
 | GEBCO recortado | < 1 MB |
 | FES2022b (solo elevaciones, 15 constituyentes) | 2,3 GB (medido); `07` guarda un recorte regional de pocos MB, pero `07b` necesita los globales (Callao y San Juan quedan fuera del recorte) |
